@@ -30,7 +30,9 @@ use thrift::protocol::verify_expected_service_call;
 use thrift::protocol::verify_required_field_exists;
 use thrift::server::TProcessor;
 
-use shared;
+use async_trait::async_trait;
+
+use super::shared;
 
 /// You can define enums, which are just 32 bit integers. Values are optional
 /// and start at 1 if not supplied, C style again.
@@ -322,18 +324,19 @@ impl ConstMAPCONSTANT {
 
 /// Ahh, now onto the cool part, defining a service. Services just need a name
 /// and can optionally inherit from another service using the extends keyword.
+#[async_trait]
 pub trait TCalculatorSyncClient : shared::TSharedServiceSyncClient {
   /// A method definition looks like C code. It has a return type, arguments,
   /// and optionally a list of exceptions that it may throw. Note that argument
   /// lists and exception lists are specified using the exact same syntax as
   /// field lists in struct or exception definitions.
-  fn ping(&mut self) -> thrift::Result<()>;
-  fn add(&mut self, num1: i32, num2: i32) -> thrift::Result<i32>;
-  fn calculate(&mut self, logid: i32, w: Work) -> thrift::Result<i32>;
+  async fn ping(&mut self) -> thrift::Result<()>;
+  async fn add(&mut self, num1: i32, num2: i32) -> thrift::Result<i32>;
+  async fn calculate(&mut self, logid: i32, w: Work) -> thrift::Result<i32>;
   /// This method has a oneway modifier. That means the client only makes
   /// a request and does not listen for any response at all. Oneway methods
   /// must be void.
-  fn zip(&mut self) -> thrift::Result<()>;
+  async fn zip(&mut self) -> thrift::Result<()>;
 }
 
 pub trait TCalculatorSyncClientMarker {}
@@ -360,8 +363,9 @@ impl <IP, OP> TThriftClient for CalculatorSyncClient<IP, OP> where IP: TInputPro
 impl <IP, OP> TCalculatorSyncClientMarker for CalculatorSyncClient<IP, OP> where IP: TInputProtocol, OP: TOutputProtocol {}
 impl <IP, OP> shared::TSharedServiceSyncClientMarker for CalculatorSyncClient<IP, OP> where IP: TInputProtocol, OP: TOutputProtocol {}
 
-impl <C: TThriftClient + TCalculatorSyncClientMarker + shared::TSharedServiceSyncClientMarker> TCalculatorSyncClient for C {
-  fn ping(&mut self) -> thrift::Result<()> {
+#[async_trait]
+impl <C: TThriftClient + TCalculatorSyncClientMarker + shared::TSharedServiceSyncClientMarker + Send> TCalculatorSyncClient for C {
+  async fn ping(&mut self) -> thrift::Result<()> {
     (
       {
         self.increment_sequence_number();
@@ -388,7 +392,7 @@ impl <C: TThriftClient + TCalculatorSyncClientMarker + shared::TSharedServiceSyn
       result.ok_or()
     }
   }
-  fn add(&mut self, num1: i32, num2: i32) -> thrift::Result<i32> {
+  async fn add(&mut self, num1: i32, num2: i32) -> thrift::Result<i32> {
     (
       {
         self.increment_sequence_number();
@@ -415,7 +419,7 @@ impl <C: TThriftClient + TCalculatorSyncClientMarker + shared::TSharedServiceSyn
       result.ok_or()
     }
   }
-  fn calculate(&mut self, logid: i32, w: Work) -> thrift::Result<i32> {
+  async fn calculate(&mut self, logid: i32, w: Work) -> thrift::Result<i32> {
     (
       {
         self.increment_sequence_number();
@@ -442,7 +446,7 @@ impl <C: TThriftClient + TCalculatorSyncClientMarker + shared::TSharedServiceSyn
       result.ok_or()
     }
   }
-  fn zip(&mut self) -> thrift::Result<()> {
+  async fn zip(&mut self) -> thrift::Result<()> {
     (
       {
         self.increment_sequence_number();

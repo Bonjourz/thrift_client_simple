@@ -20,6 +20,10 @@ extern crate clap;
 
 extern crate rthrift as thrift;
 extern crate rthrift_tutorial;
+use futures::executor::block_on;
+use std::error::Error;
+extern crate tokio;
+use tokio::runtime::Runtime;
 
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{ReadHalf, TFramedReadTransport, TFramedWriteTransport, 
@@ -29,17 +33,83 @@ use thrift::transport::{ReadHalf, TFramedReadTransport, TFramedWriteTransport,
 use rthrift_tutorial::shared::TSharedServiceSyncClient;
 use rthrift_tutorial::tutorial::{CalculatorSyncClient, Operation, TCalculatorSyncClient, Work};
 
-fn main() {
-    match run() {
-        Ok(()) => println!("tutorial client ran successfully"),
-        Err(e) => {
-            println!("tutorial client failed with error {:?}", e);
-            std::process::exit(1);
-        }
+// fn main() {
+//     match run() {
+//         Ok(()) => println!("tutorial client ran successfully"),
+//         Err(e) => {
+//             println!("tutorial client failed with error {:?}", e);
+//             std::process::exit(1);
+//         }
+//     }
+// }
+
+
+type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
+type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
+
+async fn async_run_client_one(host : &str, port: u16) -> thrift::Result<()> {
+    let mut client = new_client(host, port)?;
+
+     // alright!
+    // let's start making some calls
+
+    // let's start with a ping; the server should respond
+    println!("ping!");
+    client.ping().await?;
+
+    // simple add
+    println!("add");
+    let res = client.add(1, 2).await?;
+    println!("added 1, 2 and got {}", res);
+
+    let logid = 32;
+
+    // let's do...a multiply!
+    let res = client
+        .calculate(logid, Work::new(7, 8, Operation::MULTIPLY, None)).await?;
+    println!("multiplied 7 and 8 and got {}", res);
+
+    // let's get the log for it
+    // let res = client.get_struct(32).await?;
+    // println!("got log {:?} for operation {}", res, logid);
+
+    // ok - let's be bad :(
+    // do a divide by 0
+    // logid doesn't matter; won't be recorded
+    let res = client.calculate(77, Work::new(2, 0, Operation::DIVIDE, "we bad".to_owned())).await;
+
+    // we should have gotten an exception back
+    match res {
+        Ok(v) => panic!("should not have succeeded with result {}", v),
+        Err(e) => println!("divide by zero failed with error {:?}", e),
     }
+
+    // let's do a one-way call
+    println!("zip");
+    client.zip().await?;
+
+    // and then close out with a final ping
+    println!("ping!");
+    client.ping().await?;
+
+    Ok(())
 }
 
-fn run() -> thrift::Result<()> {
+async fn run_all_sync() {
+    let host1 = String::from("127.0.0.1");
+    let host2 = String::from("127.0.0.1");
+    // let host3 = String::from("127.0.0.1");
+    // let ret_val1 = ::new(ReBox<int>);
+    let mut async_1 = async_run_client_one(&host1, 9090);
+    let mut async_2 = async_run_client_one(&host2, 10100);
+    // let mut async_2 = async_run_client_one(&host3, 10101);
+    // let futures = vec![async_1, async_2];
+    let (_first, _second) = tokio::join!(
+        async_1,
+        async_2);
+}
+
+fn main() {
     let options = clap_app!(rust_tutorial_client =>
         (version: "0.1.0")
         (author: "Apache Thrift Developers <dev@thrift.apache.org>")
@@ -50,59 +120,10 @@ fn run() -> thrift::Result<()> {
     let matches = options.get_matches();
 
     // get any passed-in args or the defaults
-    let host = matches.value_of("host").unwrap_or("127.0.0.1");
-    let port = value_t!(matches, "port", u16).unwrap_or(9090);
-
-    // build our client and connect to the host:port
-    let mut client = new_client(host, port)?;
-
-    // alright!
-    // let's start making some calls
-
-    // let's start with a ping; the server should respond
-    println!("ping!");
-    client.ping()?;
-
-    // simple add
-    println!("add");
-    let res = client.add(1, 2)?;
-    println!("added 1, 2 and got {}", res);
-
-    let logid = 32;
-
-    // let's do...a multiply!
-    let res = client
-        .calculate(logid, Work::new(7, 8, Operation::MULTIPLY, None))?;
-    println!("multiplied 7 and 8 and got {}", res);
-
-    // let's get the log for it
-    let res = client.get_struct(32)?;
-    println!("got log {:?} for operation {}", res, logid);
-
-    // ok - let's be bad :(
-    // do a divide by 0
-    // logid doesn't matter; won't be recorded
-    let res = client.calculate(77, Work::new(2, 0, Operation::DIVIDE, "we bad".to_owned()));
-
-    // we should have gotten an exception back
-    match res {
-        Ok(v) => panic!("should not have succeeded with result {}", v),
-        Err(e) => println!("divide by zero failed with error {:?}", e),
-    }
-
-    // let's do a one-way call
-    println!("zip");
-    client.zip()?;
-
-    // and then close out with a final ping
-    println!("ping!");
-    client.ping()?;
-
-    Ok(())
+    // tokio::runtim::Runtime
+    block_on(run_all_sync());
+    //tokio::
 }
-
-type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
-type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
 
 // type ClientInputProtocol = TBinaryInputProtocol<TFramedReadTransport<ReadHalf<TTcpChannel>>>;
 // type ClientOutputProtocol = TBinaryOutputProtocol<TFramedWriteTransport<WriteHalf<TTcpChannel>>>;
