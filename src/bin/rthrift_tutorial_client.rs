@@ -21,8 +21,9 @@ extern crate clap;
 extern crate rthrift as thrift;
 extern crate rthrift_tutorial;
 
-use thrift::protocol::{TCompactInputProtocol, TCompactOutputProtocol};
-use thrift::transport::{ReadHalf, TFramedReadTransport, TFramedWriteTransport, TIoChannel,
+use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
+use thrift::transport::{ReadHalf, TFramedReadTransport, TFramedWriteTransport, 
+    TBufferedReadTransport, TBufferedWriteTransport, TIoChannel,
                         TTcpChannel, WriteHalf};
 
 use rthrift_tutorial::shared::TSharedServiceSyncClient;
@@ -100,8 +101,11 @@ fn run() -> thrift::Result<()> {
     Ok(())
 }
 
-type ClientInputProtocol = TCompactInputProtocol<TFramedReadTransport<ReadHalf<TTcpChannel>>>;
-type ClientOutputProtocol = TCompactOutputProtocol<TFramedWriteTransport<WriteHalf<TTcpChannel>>>;
+type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
+type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
+
+// type ClientInputProtocol = TBinaryInputProtocol<TFramedReadTransport<ReadHalf<TTcpChannel>>>;
+// type ClientOutputProtocol = TBinaryOutputProtocol<TFramedWriteTransport<WriteHalf<TTcpChannel>>>;
 
 fn new_client
     (
@@ -119,12 +123,15 @@ fn new_client
     let (i_chan, o_chan) = c.split()?;
 
     // wrap the raw sockets (slow) with a buffered transport of some kind
-    let i_tran = TFramedReadTransport::new(i_chan);
-    let o_tran = TFramedWriteTransport::new(o_chan);
+    let i_tran = TBufferedReadTransport::new(i_chan);
+    let o_tran = TBufferedWriteTransport::new(o_chan);
+
+    // let i_tran = TFramedReadTransport::new(i_chan);
+    // let o_tran = TFramedWriteTransport::new(o_chan);
 
     // now create the protocol implementations
-    let i_prot = TCompactInputProtocol::new(i_tran);
-    let o_prot = TCompactOutputProtocol::new(o_tran);
+    let i_prot = TBinaryInputProtocol::new(i_tran, true);
+    let o_prot = TBinaryOutputProtocol::new(o_tran, true);
 
     // we're done!
     Ok(CalculatorSyncClient::new(i_prot, o_prot))

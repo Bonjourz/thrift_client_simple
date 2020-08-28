@@ -26,10 +26,12 @@ use std::convert::{From, Into};
 use std::default::Default;
 use std::sync::Mutex;
 
-use thrift::protocol::{TCompactInputProtocolFactory, TCompactOutputProtocolFactory};
+use thrift::protocol::{TBinaryInputProtocolFactory, TBinaryOutputProtocolFactory};
 use thrift::server::TServer;
+// use thrift::server::TMultiplexedProcessor;
 
-use thrift::transport::{TFramedReadTransportFactory, TFramedWriteTransportFactory};
+use thrift::transport::{TBufferedReadTransportFactory, TBufferedWriteTransportFactory};
+// use thrift::transport::{TFramedReadTransportFactory, TFramedWriteTransportFactory};
 use rthrift_tutorial::shared::{SharedServiceSyncHandler, SharedStruct};
 use rthrift_tutorial::tutorial::{CalculatorSyncHandler, CalculatorSyncProcessor};
 use rthrift_tutorial::tutorial::{InvalidOperation, Operation, Work};
@@ -58,11 +60,13 @@ fn run() -> thrift::Result<()> {
 
     println!("binding to {}", listen_address);
 
-    let i_tran_fact = TFramedReadTransportFactory::new();
-    let i_prot_fact = TCompactInputProtocolFactory::new();
+    let i_tran_fact = TBufferedReadTransportFactory::new();
+    // let i_tran_fact = TFramedReadTransportFactory::new();
+    let i_prot_fact = TBinaryInputProtocolFactory::new();
 
-    let o_tran_fact = TFramedWriteTransportFactory::new();
-    let o_prot_fact = TCompactOutputProtocolFactory::new();
+    let o_tran_fact = TBufferedWriteTransportFactory::new();
+    // let o_tran_fact = TFramedWriteTransportFactory::new();
+    let o_prot_fact = TBinaryOutputProtocolFactory::new();
 
     // demux incoming messages
     let processor = CalculatorSyncProcessor::new(CalculatorServer { ..Default::default() });
@@ -76,6 +80,10 @@ fn run() -> thrift::Result<()> {
         processor,
         10,
     );
+
+    // let processor_multi = CalculatorSyncProcessor::new(CalculatorServer { ..Default::default() });
+    // let mut multiplexed_processor = TMultiplexedProcessor::new();
+    // multiplexed_processor.register("ping", Box::new(processor_multi), true);
 
     server.listen(&listen_address)
 }
