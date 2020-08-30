@@ -24,6 +24,14 @@ use futures::executor::block_on;
 use std::error::Error;
 extern crate tokio;
 use tokio::runtime::Runtime;
+use tokio::io;
+use tokio::prelude::*;
+
+use std::rc::Rc;
+use std::cell::RefCell;
+
+extern crate futures;
+// use futures::{Poll, Async, try_ready};
 
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{ReadHalf, TFramedReadTransport, TFramedWriteTransport, 
@@ -47,8 +55,9 @@ use rthrift_tutorial::tutorial::{CalculatorSyncClient, Operation, TCalculatorSyn
 type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
 type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
 
-async fn async_run_client_one(host : &str, port: u16) -> thrift::Result<()> {
-    let mut client = new_client(host, port)?;
+async fn async_run_client_one(host : String, port: u16,
+    args1: i32) -> thrift::Result<i32> {
+    let mut client = new_client(&host, port)?;
 
      // alright!
     // let's start making some calls
@@ -59,7 +68,7 @@ async fn async_run_client_one(host : &str, port: u16) -> thrift::Result<()> {
 
     // simple add
     println!("add");
-    let res = client.add(1, 2).await?;
+    let res = client.add(args1, 2).await?;
     println!("added 1, 2 and got {}", res);
 
     let logid = 32;
@@ -69,19 +78,13 @@ async fn async_run_client_one(host : &str, port: u16) -> thrift::Result<()> {
         .calculate(logid, Work::new(7, 8, Operation::MULTIPLY, None)).await?;
     println!("multiplied 7 and 8 and got {}", res);
 
-    // let's get the log for it
-    // let res = client.get_struct(32).await?;
-    // println!("got log {:?} for operation {}", res, logid);
-
-    // ok - let's be bad :(
-    // do a divide by 0
-    // logid doesn't matter; won't be recorded
-    let res = client.calculate(77, Work::new(2, 0, Operation::DIVIDE, "we bad".to_owned())).await;
+    let res = client.calculate(77, Work::new(2, 1, Operation::DIVIDE, "we bad".to_owned())).await;
 
     // we should have gotten an exception back
+    let mut ret_val : i32;
     match res {
-        Ok(v) => panic!("should not have succeeded with result {}", v),
-        Err(e) => println!("divide by zero failed with error {:?}", e),
+        Ok(v) => {ret_val = v;},
+        Err(e) => panic!("divided by error"),
     }
 
     // let's do a one-way call
@@ -92,21 +95,38 @@ async fn async_run_client_one(host : &str, port: u16) -> thrift::Result<()> {
     println!("ping!");
     client.ping().await?;
 
-    Ok(())
+    Ok(ret_val)
 }
 
-async fn run_all_sync() {
-    let host1 = String::from("127.0.0.1");
-    let host2 = String::from("127.0.0.1");
-    // let host3 = String::from("127.0.0.1");
-    // let ret_val1 = ::new(ReBox<int>);
-    let mut async_1 = async_run_client_one(&host1, 9090);
-    let mut async_2 = async_run_client_one(&host2, 10100);
-    // let mut async_2 = async_run_client_one(&host3, 10101);
-    // let futures = vec![async_1, async_2];
+async fn run_all_sync(/*res_ref1: Rc<RefCell<i32>>, res_ref2: Rc<RefCell<i32>>*/)
+    -> (Option<i32>, Option<i32>) {
+    
+    let res1 = tokio::spawn(async move {
+        let host1 = String::from("127.0.0.1");
+        async_run_client_one(host1, 10100, 2).await;
+    });
+
+    let res2 = tokio::spawn(async move {
+        let host2  = String::from("127.0.0.1");
+        async_run_client_one(host2, 9090, 3).await;
+    });
+
+    // let result_1 = Rc::clone(&res_ref1);
+    // let result_2 = Rc::clone(&res_ref2);
+
+    // let res_1 : i32 = res1;
+    // let res_2 : i32 = res2;
     let (_first, _second) = tokio::join!(
-        async_1,
-        async_2);
+        res1, res2
+    );
+
+    // let test : thrift::Result<i32> = Ok(_first);
+    // match _first {
+    //     Ok(_val) => {println!("gbd the the result:")},
+    //     Err(e) => println!("tutorial client failed with error {:?}", e),
+    // }
+    println!("arrive here");
+    (Some(1), Some(2))
 }
 
 fn main() {
@@ -121,7 +141,33 @@ fn main() {
 
     // get any passed-in args or the defaults
     // tokio::runtim::Runtime
-    block_on(run_all_sync());
+    let rt = Runtime::new().unwrap();
+
+    //let s = "Hello World!".to_string();
+
+    match rt.enter(|| run_all_sync()) {
+        (_x, _y) => {
+            match _x {
+                Some(_val1) =>  println!("get the val: {}", _val1),
+                _ => println!("None val")
+            }
+        }
+    }
+    println!("arrive here after rt enter");
+
+    /* Barrier here */
+
+    //rt.enter(|| run_all_sync());
+
+    //rt.shutdown_background();
+
+    // block_on(run_all_sync());
+    // let handle = tokio::spawn(async move {
+    //     run_all_sync
+    // }).await.unwrap();
+
+    // 
+    // tokio_compat::run_std(run_all_sync());
     //tokio::
 }
 
