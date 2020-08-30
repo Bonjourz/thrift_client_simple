@@ -25,7 +25,7 @@ use std::error::Error;
 extern crate tokio;
 use tokio::runtime::Runtime;
 use tokio::io;
-use tokio::prelude::*;
+use tokio::*;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -103,12 +103,13 @@ async fn run_all_sync(/*res_ref1: Rc<RefCell<i32>>, res_ref2: Rc<RefCell<i32>>*/
     
     let res1 = tokio::spawn(async move {
         let host1 = String::from("127.0.0.1");
-        async_run_client_one(host1, 10100, 2).await;
+        async_run_client_one(host1, 10100, 2).await
     });
 
+    // let mut res_wrap;
     let res2 = tokio::spawn(async move {
         let host2  = String::from("127.0.0.1");
-        async_run_client_one(host2, 9090, 3).await;
+        async_run_client_one(host2, 9090, 3).await
     });
 
     // let result_1 = Rc::clone(&res_ref1);
@@ -120,13 +121,20 @@ async fn run_all_sync(/*res_ref1: Rc<RefCell<i32>>, res_ref2: Rc<RefCell<i32>>*/
         res1, res2
     );
 
-    // let test : thrift::Result<i32> = Ok(_first);
-    // match _first {
-    //     Ok(_val) => {println!("gbd the the result:")},
-    //     Err(e) => println!("tutorial client failed with error {:?}", e),
-    // }
+    //let test : thrift::Result<i32> = Ok(_first);
+    let mut final_ret : i32 = 0;
+    match _first {
+        // Ok(thrift_result) => final_ret = thrift_result,
+        Ok(thrift_result) => {
+            match thrift_result {
+                Ok(_val) => final_ret = _val,
+                Err(_e) => println!("error"),
+            }
+        },
+        Err(e) => println!("tutorial client failed with error {:?}", e),
+    }
     println!("arrive here");
-    (Some(1), Some(2))
+    (Some(final_ret), Some(2))
 }
 
 fn main() {
@@ -141,11 +149,12 @@ fn main() {
 
     // get any passed-in args or the defaults
     // tokio::runtim::Runtime
-    let rt = Runtime::new().unwrap();
+    let mut rt = Runtime::new().unwrap();
 
     //let s = "Hello World!".to_string();
 
-    match rt.enter(|| run_all_sync()) {
+    // rt.block_on(run_all_sync());
+    match rt.block_on(run_all_sync()) {
         (_x, _y) => {
             match _x {
                 Some(_val1) =>  println!("get the val: {}", _val1),
