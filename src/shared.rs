@@ -76,8 +76,15 @@ pub struct MyInputProtocolFuture {
 impl Future for MyInputProtocolFuture {
   type Output = ();
   fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-    println!("[gbd] MyInputProtocolFuture {}", self.num);
-    Poll::Ready(())
+    if self.num < self.max {
+      self.num = self.num + 1;
+      println!("[gbd] input poll here: {}", self.num);
+      _cx.waker().wake_by_ref();
+      Poll::Pending
+    } else {
+      println!("[gbd] InputFuture return here: {}", self.num);
+      Poll::Ready(())
+    }
   }
 }
 
@@ -91,7 +98,7 @@ impl Future for MyOutputProtocolFuture {
   fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
     if self.num < self.max {
       self.num = self.num + 1;
-      println!("[gbd] poll here: {}", self.num);
+      println!("[gbd] output poll here: {}", self.num);
       _cx.waker().wake_by_ref();
       Poll::Pending
     } else {
@@ -180,7 +187,7 @@ impl<IP, OP> TMyClient for MyClient<IP, OP>
         OP: TMyOutputProtocol + Send  {
   async fn add(&mut self, _arg1: i32, _arg2: i32) -> thrift::Result<i32> {
     self._i_prot.test_future_i().await;
-    self._o_prot.test_future_o().await;
+    //self._o_prot.test_future_o().await;
     Ok(1)
     //let call_args = SharedServiceAddArgs { arg1: arg1, arg2: arg2 };
     //call_args.write_to_out_protocol(self.o_prot_mut()).await?;
