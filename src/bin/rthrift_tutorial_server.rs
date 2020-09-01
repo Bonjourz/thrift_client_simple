@@ -21,20 +21,14 @@ extern crate clap;
 extern crate rthrift as thrift;
 extern crate rthrift_tutorial;
 
-use std::collections::HashMap;
-use std::convert::{From, Into};
-use std::default::Default;
-use std::sync::Mutex;
-
+#[allow(unused_imports)]
 use thrift::protocol::{TBinaryInputProtocolFactory, TBinaryOutputProtocolFactory};
 use thrift::server::TServer;
 // use thrift::server::TMultiplexedProcessor;
 
 use thrift::transport::{TBufferedReadTransportFactory, TBufferedWriteTransportFactory};
 // use thrift::transport::{TFramedReadTransportFactory, TFramedWriteTransportFactory};
-use rthrift_tutorial::shared::{SharedServiceSyncHandler, SharedStruct};
-use rthrift_tutorial::tutorial::{CalculatorSyncHandler, CalculatorSyncProcessor};
-use rthrift_tutorial::tutorial::{InvalidOperation, Operation, Work};
+use rthrift_tutorial::shared::*;
 
 fn main() {
     match run() {
@@ -69,7 +63,7 @@ fn run() -> thrift::Result<()> {
     let o_prot_fact = TBinaryOutputProtocolFactory::new();
 
     // demux incoming messages
-    let processor = CalculatorSyncProcessor::new(CalculatorServer { ..Default::default() });
+    let processor = SharedServiceSyncProcessor::new(SharedServiceServer {});
 
     // create the server and start listening
     let mut server = TServer::new(
@@ -89,96 +83,17 @@ fn run() -> thrift::Result<()> {
 }
 
 /// Handles incoming Calculator service calls.
-struct CalculatorServer {
-    log: Mutex<HashMap<i32, SharedStruct>>,
-}
-
-impl Default for CalculatorServer {
-    fn default() -> CalculatorServer {
-        CalculatorServer { log: Mutex::new(HashMap::new()) }
-    }
-}
+struct SharedServiceServer {}
 
 // since Calculator extends SharedService we have to implement the
 // handler for both traits.
 //
 
+
 // SharedService handler
-impl SharedServiceSyncHandler for CalculatorServer {
-    fn handle_get_struct(&self, key: i32) -> thrift::Result<SharedStruct> {
-        let log = self.log.lock().unwrap();
-        log.get(&key)
-            .cloned()
-            .ok_or_else(|| format!("could not find log for key {}", key).into())
-    }
-}
-
-// Calculator handler
-impl CalculatorSyncHandler for CalculatorServer {
-    fn handle_ping(&self) -> thrift::Result<()> {
-        println!("pong!");
-        Ok(())
-    }
-
+impl SharedServiceSyncHandler for SharedServiceServer {
     fn handle_add(&self, num1: i32, num2: i32) -> thrift::Result<i32> {
-        println!("handling add: n1:{} n2:{}", num1, num2);
+        //println!("handling add: n1:{} n2:{}", num1, num2);
         Ok(num1 + num2)
-    }
-
-    fn handle_calculate(&self, logid: i32, w: Work) -> thrift::Result<i32> {
-        println!("handling calculate: l:{}, w:{:?}", logid, w);
-
-        let res = if let Some(ref op) = w.op {
-            if w.num1.is_none() || w.num2.is_none() {
-                Err(
-                    InvalidOperation {
-                        what_op: Some(*op as i32),
-                        why: Some("no operands specified".to_owned()),
-                    },
-                )
-            } else {
-                // so that I don't have to call unwrap() multiple times below
-                let num1 = w.num1.as_ref().expect("operands checked");
-                let num2 = w.num2.as_ref().expect("operands checked");
-
-                match *op {
-                    Operation::ADD => Ok(num1 + num2),
-                    Operation::SUBTRACT => Ok(num1 - num2),
-                    Operation::MULTIPLY => Ok(num1 * num2),
-                    Operation::DIVIDE => {
-                        if *num2 == 0 {
-                            Err(
-                                InvalidOperation {
-                                    what_op: Some(*op as i32),
-                                    why: Some("divide by 0".to_owned()),
-                                },
-                            )
-                        } else {
-                            Ok(num1 / num2)
-                        }
-                    }
-                }
-            }
-        } else {
-            Err(InvalidOperation::new(None, "no operation specified".to_owned()),)
-        };
-
-        // if the operation was successful log it
-        if let Ok(ref v) = res {
-            let mut log = self.log.lock().unwrap();
-            log.insert(logid, SharedStruct::new(logid, format!("{}", v)));
-        }
-
-        // the try! macro automatically maps errors
-        // but, since we aren't using that here we have to map errors manually
-        //
-        // exception structs defined in the IDL have an auto-generated
-        // impl of From::from
-        res.map_err(From::from)
-    }
-
-    fn handle_zip(&self) -> thrift::Result<()> {
-        println!("handling zip");
-        Ok(())
     }
 }

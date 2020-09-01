@@ -20,121 +20,79 @@ extern crate clap;
 
 extern crate rthrift as thrift;
 extern crate rthrift_tutorial;
-use futures::executor::block_on;
-use std::error::Error;
-extern crate tokio;
-use tokio::runtime::Runtime;
-use tokio::io;
-use tokio::*;
 
-use std::rc::Rc;
-use std::cell::RefCell;
-
-extern crate futures;
-// use futures::{Poll, Async, try_ready};
-
+#[allow(unused_imports)]
 use thrift::protocol::{TBinaryInputProtocol, TBinaryOutputProtocol};
 use thrift::transport::{ReadHalf, TFramedReadTransport, TFramedWriteTransport, 
     TBufferedReadTransport, TBufferedWriteTransport, TIoChannel,
                         TTcpChannel, WriteHalf};
 
-use rthrift_tutorial::shared::TSharedServiceSyncClient;
-use rthrift_tutorial::tutorial::{CalculatorSyncClient, Operation, TCalculatorSyncClient, Work};
+use std::time::{SystemTime, Duration};
 
-// fn main() {
-//     match run() {
-//         Ok(()) => println!("tutorial client ran successfully"),
-//         Err(e) => {
-//             println!("tutorial client failed with error {:?}", e);
-//             std::process::exit(1);
-//         }
-//     }
-// }
+use rthrift_tutorial::shared::*;
+use std::thread;
+use std::thread::JoinHandle;
+use std::sync::{Arc, Mutex};
+use std::vec::Vec;
 
-
-type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
-type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
-
-async fn async_run_client_one(host : String, port: u16,
-    args1: i32) -> thrift::Result<i32> {
-    let mut client = new_client(&host, port)?;
-
-     // alright!
-    // let's start making some calls
-
-    // let's start with a ping; the server should respond
-    println!("ping!");
-    client.ping().await?;
-
-    // simple add
-    println!("add");
-    let res = client.add(args1, 2).await?;
-    println!("added 1, 2 and got {}", res);
-
-    let logid = 32;
-
-    // let's do...a multiply!
-    let res = client
-        .calculate(logid, Work::new(7, 8, Operation::MULTIPLY, None)).await?;
-    println!("multiplied 7 and 8 and got {}", res);
-
-    let res = client.calculate(77, Work::new(2, 1, Operation::DIVIDE, "we bad".to_owned())).await;
-
-    // we should have gotten an exception back
-    let mut ret_val : i32;
-    match res {
-        Ok(v) => {ret_val = v;},
-        Err(e) => panic!("divided by error"),
+fn call_client(addr: Arc<String>, port: &u16, loop_num: u64) -> thrift::Result<()> {
+    let mut client = new_client(addr.as_ref(), *port)?;
+    
+    for _i in 0..loop_num {
+        let arg1 = 1;
+        let arg2 = 2;
+        client.add(arg1, arg2)?;
     }
-
-    // let's do a one-way call
-    println!("zip");
-    client.zip().await?;
-
-    // and then close out with a final ping
-    println!("ping!");
-    client.ping().await?;
-
-    Ok(ret_val)
+    Ok(())
 }
 
-async fn run_all_sync(/*res_ref1: Rc<RefCell<i32>>, res_ref2: Rc<RefCell<i32>>*/)
-    -> (Option<i32>, Option<i32>) {
+ fn run_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64) -> thrift::Result<()> {
+    let mut _time_vec : Vec<u128> = Vec::new();
+    let mut _time_vec = Arc::new(Mutex::new(_time_vec));
     
-    let res1 = tokio::spawn(async move {
-        let host1 = String::from("127.0.0.1");
-        async_run_client_one(host1, 10100, 2).await
-    });
+    let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
+    for _i in 0..thread_num {
+        let addr = addr.clone();
+        let mut _time_vec = _time_vec.clone();
+        _time_vec.lock().unwrap().push(0);
 
-    // let mut res_wrap;
-    let res2 = tokio::spawn(async move {
-        let host2  = String::from("127.0.0.1");
-        async_run_client_one(host2, 9090, 3).await
-    });
+        let handler = thread::spawn(move || {
+            // thread code
+            let time_begin = SystemTime::now();
+            
+            match call_client(addr, &port, loop_num) {
+                Ok(_) => {},
+                Err(_) => {println!("[gbd] Call client error here");},
+            };
 
-    // let result_1 = Rc::clone(&res_ref1);
-    // let result_2 = Rc::clone(&res_ref2);
-
-    // let res_1 : i32 = res1;
-    // let res_2 : i32 = res2;
-    let (_first, _second) = tokio::join!(
-        res1, res2
-    );
-
-    //let test : thrift::Result<i32> = Ok(_first);
-    let mut final_ret : i32 = 0;
-    match _first {
-        // Ok(thrift_result) => final_ret = thrift_result,
-        Ok(thrift_result) => {
-            match thrift_result {
-                Ok(_val) => final_ret = _val,
-                Err(_e) => println!("error"),
+            let time_end = SystemTime::now();
+            let mut duration_time = Duration::from_secs(1); 
+            let duration = time_end.duration_since(time_begin);
+            match duration {
+                Ok(_d) => {duration_time = _d;},
+                _ => {},
             }
-        },
-        Err(e) => println!("tutorial client failed with error {:?}", e),
+            let time : u128 = duration_time.as_millis();
+            _time_vec.lock().unwrap()[_i as usize] = time;
+            //println!("elapse: {}", time);
+        });
+        //print!("after spawn thread: {}", _i);
+        handler_vec.push(handler);
     }
-    println!("arrive here");
-    (Some(final_ret), Some(2))
+
+    for handler in handler_vec {
+        handler.join().unwrap();
+    }
+
+    let mut total : u128 = 0;
+    for time in _time_vec.lock().unwrap().iter() {
+        total += time;
+    }
+
+    let qps : f64 = ((thread_num * loop_num) as f64) / (total as f64 / 1000 as f64);
+
+    println!("{} Req/ms", qps);
+    Ok(())
 }
 
 fn main() {
@@ -144,54 +102,55 @@ fn main() {
         (about: "Thrift Rust tutorial client")
         (@arg host: --host +takes_value "host on which the tutorial server listens")
         (@arg port: --port +takes_value "port on which the tutorial server listens")
+        (@arg iter: --iter +takes_value "Iteration Numbers")
+        (@arg thread: --thread +takes_value "Thread Numbers")
     );
     let matches = options.get_matches();
 
-    // get any passed-in args or the defaults
-    // tokio::runtim::Runtime
-    let mut rt = Runtime::new().unwrap();
+     // get any passed-in args or the defaults
+    let host = matches.value_of("host").unwrap_or("127.0.0.1");
+    let port = value_t!(matches, "port", u16).unwrap_or(9090);
+    let iter = value_t!(matches, "iter", u64).unwrap_or(50000);
+    let thread_num = value_t!(matches, "thread", u64).unwrap_or(12);
+
+    println!("Client configuration: IP: {}:{}, iter: {} thread_num: {}",
+                host, port, iter, thread_num);
+    
+    let host_arc = Arc::new(host.to_string());
+
+    match run_test(host_arc, port, iter, thread_num) {
+        Ok(_ok) => {},
+        Err(_err) => {},
+    };
 
     //let s = "Hello World!".to_string();
 
-    // rt.block_on(run_all_sync());
-    match rt.block_on(run_all_sync()) {
-        (_x, _y) => {
-            match _x {
-                Some(_val1) =>  println!("get the val: {}", _val1),
-                _ => println!("None val")
-            }
-        }
-    }
-    println!("arrive here after rt enter");
 
-    /* Barrier here */
+    /* New a Client */
 
-    //rt.enter(|| run_all_sync());
+    /* Send Request */
+    
+        
+    println!("Get the end of test");
 
-    //rt.shutdown_background();
-
-    // block_on(run_all_sync());
-    // let handle = tokio::spawn(async move {
-    //     run_all_sync
-    // }).await.unwrap();
-
-    // 
-    // tokio_compat::run_std(run_all_sync());
-    //tokio::
 }
 
 // type ClientInputProtocol = TBinaryInputProtocol<TFramedReadTransport<ReadHalf<TTcpChannel>>>;
 // type ClientOutputProtocol = TBinaryOutputProtocol<TFramedWriteTransport<WriteHalf<TTcpChannel>>>;
 
+type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
+type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
+
+
 fn new_client
     (
     host: &str,
     port: u16,
-) -> thrift::Result<CalculatorSyncClient<ClientInputProtocol, ClientOutputProtocol>> {
+) -> thrift::Result<SharedServiceSyncClient<ClientInputProtocol, ClientOutputProtocol>> {
     let mut c = TTcpChannel::new();
 
     // open the underlying TCP stream
-    println!("connecting to tutorial server on {}:{}", host, port);
+    // println!("connecting to tutorial server on {}:{}", host, port);
     c.open(&format!("{}:{}", host, port))?;
 
     // clone the TCP channel into two halves, one which
@@ -210,5 +169,5 @@ fn new_client
     let o_prot = TBinaryOutputProtocol::new(o_tran, true);
 
     // we're done!
-    Ok(CalculatorSyncClient::new(i_prot, o_prot))
+    Ok(SharedServiceSyncClient::new(i_prot, o_prot))
 }

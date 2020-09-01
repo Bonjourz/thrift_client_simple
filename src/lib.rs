@@ -20,4 +20,3 @@ extern crate rthrift as thrift;
 extern crate try_from;
 
 pub mod shared;
-pub mod tutorial;
