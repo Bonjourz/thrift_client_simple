@@ -38,8 +38,7 @@ use thrift::transport::{ReadHalf, TFramedReadTransport, TFramedWriteTransport,
     TBufferedReadTransport, TBufferedWriteTransport, TIoChannel,
                         TTcpChannel, WriteHalf};
 
-use rthrift_tutorial::shared::TSharedServiceSyncClient;
-use rthrift_tutorial::tutorial::{CalculatorSyncClient, Operation, TCalculatorSyncClient, Work};
+use rthrift_tutorial::shared::*;
 
 // fn main() {
 //     match run() {
@@ -52,50 +51,23 @@ use rthrift_tutorial::tutorial::{CalculatorSyncClient, Operation, TCalculatorSyn
 // }
 
 
-type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
-type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
+//type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
+//type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
 
-async fn async_run_client_one(host : String, port: u16,
+async fn async_run_client_one(_host : String, _port: u16,
     args1: i32) -> thrift::Result<i32> {
-    let mut client = new_client(&host, port)?;
+    let i_prot = MyInputProtocol::new();
+    let o_prot = MyOutputProtocol::new();
+    let mut client = MyClient::new_client(i_prot, o_prot);
 
      // alright!
     // let's start making some calls
 
     // let's start with a ping; the server should respond
-    println!("ping!");
-    client.ping().await?;
+    println!("add!");
+    let ret_val = client.add(1, 2).await;
 
-    // simple add
-    println!("add");
-    let res = client.add(args1, 2).await?;
-    println!("added 1, 2 and got {}", res);
-
-    let logid = 32;
-
-    // let's do...a multiply!
-    let res = client
-        .calculate(logid, Work::new(7, 8, Operation::MULTIPLY, None)).await?;
-    println!("multiplied 7 and 8 and got {}", res);
-
-    let res = client.calculate(77, Work::new(2, 1, Operation::DIVIDE, "we bad".to_owned())).await;
-
-    // we should have gotten an exception back
-    let mut ret_val : i32;
-    match res {
-        Ok(v) => {ret_val = v;},
-        Err(e) => panic!("divided by error"),
-    }
-
-    // let's do a one-way call
-    println!("zip");
-    client.zip().await?;
-
-    // and then close out with a final ping
-    println!("ping!");
-    client.ping().await?;
-
-    Ok(ret_val)
+    Ok(1)
 }
 
 async fn run_all_sync(/*res_ref1: Rc<RefCell<i32>>, res_ref2: Rc<RefCell<i32>>*/)
@@ -183,32 +155,32 @@ fn main() {
 // type ClientInputProtocol = TBinaryInputProtocol<TFramedReadTransport<ReadHalf<TTcpChannel>>>;
 // type ClientOutputProtocol = TBinaryOutputProtocol<TFramedWriteTransport<WriteHalf<TTcpChannel>>>;
 
-fn new_client
-    (
-    host: &str,
-    port: u16,
-) -> thrift::Result<CalculatorSyncClient<ClientInputProtocol, ClientOutputProtocol>> {
-    let mut c = TTcpChannel::new();
+// fn new_client
+//     (
+//     host: &str,
+//     port: u16,
+// ) -> thrift::Result<CalculatorSyncClient<ClientInputProtocol, ClientOutputProtocol>> {
+//     let mut c = TTcpChannel::new();
 
-    // open the underlying TCP stream
-    println!("connecting to tutorial server on {}:{}", host, port);
-    c.open(&format!("{}:{}", host, port))?;
+//     // open the underlying TCP stream
+//     println!("connecting to tutorial server on {}:{}", host, port);
+//     c.open(&format!("{}:{}", host, port))?;
 
-    // clone the TCP channel into two halves, one which
-    // we'll use for reading, the other for writing
-    let (i_chan, o_chan) = c.split()?;
+//     // clone the TCP channel into two halves, one which
+//     // we'll use for reading, the other for writing
+//     let (i_chan, o_chan) = c.split()?;
 
-    // wrap the raw sockets (slow) with a buffered transport of some kind
-    let i_tran = TBufferedReadTransport::new(i_chan);
-    let o_tran = TBufferedWriteTransport::new(o_chan);
+//     // wrap the raw sockets (slow) with a buffered transport of some kind
+//     let i_tran = TBufferedReadTransport::new(i_chan);
+//     let o_tran = TBufferedWriteTransport::new(o_chan);
 
-    // let i_tran = TFramedReadTransport::new(i_chan);
-    // let o_tran = TFramedWriteTransport::new(o_chan);
+//     // let i_tran = TFramedReadTransport::new(i_chan);
+//     // let o_tran = TFramedWriteTransport::new(o_chan);
 
-    // now create the protocol implementations
-    let i_prot = TBinaryInputProtocol::new(i_tran, true);
-    let o_prot = TBinaryOutputProtocol::new(o_tran, true);
+//     // now create the protocol implementations
+//     let i_prot = TBinaryInputProtocol::new(i_tran, true);
+//     let o_prot = TBinaryOutputProtocol::new(o_tran, true);
 
-    // we're done!
-    Ok(CalculatorSyncClient::new(i_prot, o_prot))
-}
+//     // we're done!
+//     Ok(CalculatorSyncClient::new(i_prot, o_prot))
+// }

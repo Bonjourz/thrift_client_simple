@@ -31,11 +31,6 @@ namespace php shared
 namespace haxe shared
 namespace netcore shared
 
-struct SharedStruct {
-  1: i32 key
-  2: string value
-}
-
 service SharedService {
-  SharedStruct getStruct(1: i32 key)
+  i32 add(1: i32 arg1, 2: i32 arg2)
 }

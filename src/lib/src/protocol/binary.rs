@@ -59,6 +59,16 @@ where
     pub transport: T, // FIXME: shouldn't be public
 }
 
+extern crate futures;
+
+struct EmptyStruct;
+impl Future for EmptyStruct {
+    type Output;
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+
+    }
+}
+
 impl<'a, T> TBinaryInputProtocol<T>
 where
     T: TReadTransport,

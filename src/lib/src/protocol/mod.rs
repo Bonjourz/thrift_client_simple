@@ -64,6 +64,9 @@ use std::fmt::{Display, Formatter};
 use transport::{TReadTransport, TWriteTransport};
 use {ProtocolError, ProtocolErrorKind};
 
+extern crate futures;
+use futures::task::Poll;
+
 #[cfg(test)]
 macro_rules! assert_eq_written_bytes {
     ($o_prot:ident, $expected_bytes:ident) => {{
