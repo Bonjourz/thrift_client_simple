@@ -297,10 +297,10 @@ fn main() {
     let thread_num = value_t!(matches, "thread", u64).unwrap_or(12);
     let req_per_conn = value_t!(matches, "reqnum", u64).unwrap_or(5000);
     let buf_size_in_kb = value_t!(matches, "bufsize", u64).unwrap_or(1);
-    let option = value_t!(matches, "bufsize", u64).unwrap_or(0);
+    let option = value_t!(matches, "option", u64).unwrap_or(0);
 
-    println!("Client configuration: IP: {}:{}, iter: {} thread_num: {} req_per_conn {}",
-                host, port, loop_num, thread_num, req_per_conn);
+    println!("Client configuration: IP: {}:{}, iter: {} thread_num: {} req_per_conn {} buf_size per req {} kB",
+                host, port, loop_num, thread_num, req_per_conn, buf_size_in_kb);
     
     let host_arc = Arc::new(host.to_string());  
     let buf_size = buf_size_in_kb * 1024;
@@ -329,7 +329,7 @@ fn main() {
             };
         },
 
-        _ => { println!("Error!!!"); },
+        _op => { println!("Error: Invalide option: {}", _op); },
     }
     
         
