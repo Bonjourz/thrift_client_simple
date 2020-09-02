@@ -53,7 +53,7 @@ fn run() -> thrift::Result<()> {
     let matches = options.get_matches();
 
     let host = matches.value_of("host").unwrap_or("127.0.0.1");
-    let port = value_t!(matches, "port", u16).unwrap_or(9090);
+    let port = value_t!(matches, "port", u16).unwrap_or(11235);
     let listen_address = format!("{}:{}", host, port);
     let thread_num = value_t!(matches, "worker", usize).unwrap_or(10);
 

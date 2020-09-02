@@ -106,7 +106,7 @@ fn throughput_test_internal(addr: Arc<String>, port: u16, loop_num : u64, req_pe
     )
 }
 
-fn throughput_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, req_per_conn: u64, 
+fn run_throughput_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, req_per_conn: u64, 
     buf_size : u64) -> thrift::Result<()> {
     let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
     let thp_array : Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
@@ -212,7 +212,7 @@ fn run_latency_test(addr: Arc<String>, port: u16, thread_num: u64, req_per_conn:
 }
 
 fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> thrift::Result<u64> {
-    let mut time_in_ms : u64 = 0;
+    let mut time_in_ns : u64 = 0;
 
     for _i in 0..loop_num {
         let time_begin = SystemTime::now();
@@ -230,31 +230,31 @@ fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> 
         }
 
         let time_end = SystemTime::now();
-        time_in_ms += get_duration_in_ms(time_begin, time_end);
+        time_in_ns += get_duration_in_ns(time_begin, time_end);
     }
 
-    Ok(time_in_ms)
+    Ok(time_in_ns)
 }
 
  fn run_qps_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, 
         req_per_conn: u64) -> thrift::Result<()> {
     
-    let total_time : Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+    let total_time_in_ns : Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
 
     let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
     for _i in 0..thread_num {
         let addr = addr.clone();
 
-        let total_time = total_time.clone();
+        let total_time_in_ns = total_time_in_ns.clone();
         let handler = thread::spawn(move || {
             // thread code
-            let mut time_in_ms = 0;
+            let mut time_in_ns = 0;
             match test_qps(addr, &port, loop_num, req_per_conn) {
-                Ok(_time_in_ms) => { time_in_ms = _time_in_ms; },
+                Ok(_time_in_ns) => { time_in_ns = _time_in_ns; },
                 Err(_) => { println!("[gbd] Call client error here"); },
             };
 
-            *total_time.lock().unwrap() += time_in_ms;
+            *total_time_in_ns.lock().unwrap() += time_in_ns;
             //println!("elapse: {}", time);
         });
         //print!("after spawn thread: {}", _i);
@@ -265,13 +265,11 @@ fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> 
         handler.join().unwrap();
     }
 
-    let total_time : u64 = *total_time.lock().unwrap();
-    let average_secs : u64 = 
-        (total_time as f64 / thread_num as f64) as u64 / 1000;
+    let average_time_in_ns : u64 = *total_time_in_ns.lock().unwrap() / thread_num;
 	
-	println!("Average Time: {} seconds", average_secs);
+	//println!("Average Time: {} ns", average_time_in_ns);
     let qps : f64 = ((loop_num * req_per_conn) as f64) / 
-		(average_secs as f64);
+		(average_time_in_ns as f64 / 1_000_000_000 as f64);
 
     println!("{} Req/s", qps);
     Ok(())
@@ -288,6 +286,7 @@ fn main() {
         (@arg thread: --thread +takes_value "Thread Numbers")
         (@arg reqnum: --reqnum +takes_value "Request Numbers")
         (@arg bufsize: --bufsize +takes_value "Buffer Size in kB")
+        (@arg option: --option +takes_value "Option")
     );
     let matches = options.get_matches();
 
@@ -298,29 +297,43 @@ fn main() {
     let thread_num = value_t!(matches, "thread", u64).unwrap_or(12);
     let req_per_conn = value_t!(matches, "reqnum", u64).unwrap_or(5000);
     let buf_size_in_kb = value_t!(matches, "bufsize", u64).unwrap_or(1);
+    let option = value_t!(matches, "bufsize", u64).unwrap_or(0);
 
     println!("Client configuration: IP: {}:{}, iter: {} thread_num: {} req_per_conn {}",
                 host, port, loop_num, thread_num, req_per_conn);
     
-    let host_arc = Arc::new(host.to_string());
-
-    // match run_qps_test(host_arc, port, loop_num, thread_num, req_per_conn) {
-    //     Ok(_ok) => {},
-    //     Err(_err) => {},
-    // };
-
+    let host_arc = Arc::new(host.to_string());  
     let buf_size = buf_size_in_kb * 1024;
-    match run_latency_test(host_arc, port, thread_num, req_per_conn, 
-        buf_size) {
-        Ok(_ok) => {},
-        Err(_err) => { println!("run_latency_test err: {:?}", _err); }
-    };
-    // match run_throughput_test(host_arc, port, loop_num, thread_num, buf_size) {
-    //     Ok(_ok) => {},
-    //     Err(_err) => {},
-    // };
+    match option {
+        /* Run qps test */
+        0 => {
+            match run_qps_test(host_arc, port, loop_num, thread_num, req_per_conn) {
+                Ok(_ok) => {},
+                Err(_err) => { println!("run_qps_test err: {:?}", _err); },
+            };
+        },
+
+        /* Run throughput test */
+        1 => {
+            match run_throughput_test(host_arc, port, loop_num, thread_num, req_per_conn, buf_size) {
+                Ok(_ok) => {},
+                Err(_err) => { println!("run_throughput_test err: {:?}", _err); },
+            };
+        },
+
+        /* Run latency test */
+        2 => {
+            match run_latency_test(host_arc, port, thread_num, req_per_conn, buf_size) {
+                Ok(_ok) => {},
+                Err(_err) => { println!("run_latency_test err: {:?}", _err); }
+            };
+        },
+
+        _ => { println!("Error!!!"); },
+    }
+    
         
-    println!("Get the end of test");
+    // println!("Get the end of test");
 
 }
 
