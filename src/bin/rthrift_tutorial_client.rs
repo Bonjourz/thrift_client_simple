@@ -122,14 +122,6 @@ fn main() {
         Ok(_ok) => {},
         Err(_err) => {},
     };
-
-    //let s = "Hello World!".to_string();
-
-
-    /* New a Client */
-
-    /* Send Request */
-    
         
     println!("Get the end of test");
 

@@ -45,14 +45,19 @@ fn run() -> thrift::Result<()> {
         (version: "0.1.0")
         (author: "Apache Thrift Developers <dev@thrift.apache.org>")
         (about: "Thrift Rust tutorial server")
+        (@arg host: --host +takes_value "The IP address this server binds")
         (@arg port: --port +takes_value "port on which the tutorial server listens")
+        (@arg worker: --worker +takes_value "The Worker Num Server Has")
+        
     );
     let matches = options.get_matches();
 
+    let host = matches.value_of("host").unwrap_or("127.0.0.1");
     let port = value_t!(matches, "port", u16).unwrap_or(9090);
-    let listen_address = format!("127.0.0.1:{}", port);
+    let listen_address = format!("{}:{}", host, port);
+    let thread_num = value_t!(matches, "thread", usize).unwrap_or(10);
 
-    println!("binding to {}", listen_address);
+    println!("Server configuaration: addr {}, worker thread: {}", listen_address, thread_num);
 
     let i_tran_fact = TBufferedReadTransportFactory::new();
     // let i_tran_fact = TFramedReadTransportFactory::new();
@@ -72,7 +77,7 @@ fn run() -> thrift::Result<()> {
         o_tran_fact,
         o_prot_fact,
         processor,
-        10,
+        thread_num,
     );
 
     // let processor_multi = CalculatorSyncProcessor::new(CalculatorServer { ..Default::default() });
