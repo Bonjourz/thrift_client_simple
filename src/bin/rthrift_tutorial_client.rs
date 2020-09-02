@@ -35,18 +35,21 @@ use std::thread::JoinHandle;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
-fn call_client(addr: Arc<String>, port: &u16, loop_num: u64) -> thrift::Result<()> {
-    let mut client = new_client(addr.as_ref(), *port)?;
-    
+fn call_client(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> thrift::Result<()> {
     for _i in 0..loop_num {
-        let arg1 = 1;
-        let arg2 = 2;
-        client.add(arg1, arg2)?;
+        let mut client = new_client(addr.as_ref(), *port)?;
+        
+        for _i in 0..req_per_conn {
+            let arg1 = 1;
+            let arg2 = 2;
+            client.add(arg1, arg2)?;
+        }
     }
     Ok(())
 }
 
- fn run_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64) -> thrift::Result<()> {
+ fn run_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, 
+        req_per_conn: u64) -> thrift::Result<()> {
     let mut _time_vec : Vec<u128> = Vec::new();
     let mut _time_vec = Arc::new(Mutex::new(_time_vec));
     
@@ -60,7 +63,7 @@ fn call_client(addr: Arc<String>, port: &u16, loop_num: u64) -> thrift::Result<(
             // thread code
             let time_begin = SystemTime::now();
             
-            match call_client(addr, &port, loop_num) {
+            match call_client(addr, &port, loop_num, req_per_conn) {
                 Ok(_) => {},
                 Err(_) => {println!("[gbd] Call client error here");},
             };
@@ -89,7 +92,7 @@ fn call_client(addr: Arc<String>, port: &u16, loop_num: u64) -> thrift::Result<(
         total += time;
     }
 
-    let qps : f64 = ((thread_num * loop_num) as f64) / (total as f64 / 1000 as f64);
+    let qps : f64 = ((thread_num * loop_num * req_per_conn) as f64) / (total as f64 / 1000 as f64);
 
     println!("{} Req/ms", qps);
     Ok(())
@@ -104,21 +107,23 @@ fn main() {
         (@arg port: --port +takes_value "port on which the tutorial server listens")
         (@arg iter: --iter +takes_value "Iteration Numbers")
         (@arg thread: --thread +takes_value "Thread Numbers")
+        (@arg reqnum: --reqnum +takes_value "Request Numbers")
     );
     let matches = options.get_matches();
 
      // get any passed-in args or the defaults
     let host = matches.value_of("host").unwrap_or("127.0.0.1");
     let port = value_t!(matches, "port", u16).unwrap_or(9090);
-    let iter = value_t!(matches, "iter", u64).unwrap_or(50000);
+    let loop_num = value_t!(matches, "iter", u64).unwrap_or(5000);
     let thread_num = value_t!(matches, "thread", u64).unwrap_or(12);
+    let req_per_conn = value_t!(matches, "reqnum", u64).unwrap_or(5000);
 
-    println!("Client configuration: IP: {}:{}, iter: {} thread_num: {}",
-                host, port, iter, thread_num);
+    println!("Client configuration: IP: {}:{}, iter: {} thread_num: {} req_per_conn {}",
+                host, port, loop_num, thread_num, req_per_conn);
     
     let host_arc = Arc::new(host.to_string());
 
-    match run_test(host_arc, port, iter, thread_num) {
+    match run_test(host_arc, port, loop_num, thread_num, req_per_conn) {
         Ok(_ok) => {},
         Err(_err) => {},
     };
