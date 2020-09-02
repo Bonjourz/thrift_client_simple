@@ -55,7 +55,7 @@ fn run() -> thrift::Result<()> {
     let host = matches.value_of("host").unwrap_or("127.0.0.1");
     let port = value_t!(matches, "port", u16).unwrap_or(9090);
     let listen_address = format!("{}:{}", host, port);
-    let thread_num = value_t!(matches, "thread", usize).unwrap_or(10);
+    let thread_num = value_t!(matches, "worker", usize).unwrap_or(10);
 
     println!("Server configuaration: addr {}, worker thread: {}", listen_address, thread_num);
 
