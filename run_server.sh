@@ -1,8 +1,7 @@
 #!/bin/bash
 
-if [ $# == 3 ]; then
-    ./server --host $1 --port $2 --worker $3
-else
-    echo "args num: $#"
-    echo "Usage: ./server --host [host] --port [port] --worker[worker_num]"
-fi
+LISTEN_ADDR="10.108.21.59"
+WORKER_NUM=32
+PORT=11235
+
+./server --host $LISTEN_ADDR --worker $WORKER_NUM --port $PORT
