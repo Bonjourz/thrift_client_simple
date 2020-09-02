@@ -45,3 +45,5 @@ path = "./lib"
 futures = "0.3.5"
 tokio = { version = "0.2.22", features = ["macros", "tcp"] }
 async-trait = "0.1.38"
+rsa = "0.3.0"
+rand = "0.7.3"

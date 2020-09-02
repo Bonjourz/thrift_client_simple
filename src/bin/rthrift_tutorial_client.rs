@@ -34,53 +34,227 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::sync::{Arc, Mutex};
 use std::vec::Vec;
+use rand::prelude::*;
+use std::mem;
 
-fn call_client(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> thrift::Result<()> {
+use std::path::Path;
+use std::fs::File;
+use std::io::prelude::*;
+
+fn get_duration(start_time : SystemTime, end_time: SystemTime) -> Duration {
+    let duration = end_time.duration_since(start_time);
+    let mut duration_time = Duration::from_secs(1);
+    match duration {
+        Ok(_d) => {duration_time = _d;},
+        _ => {},
+    }
+    duration_time
+}
+
+fn get_duration_in_ms(start_time : SystemTime, end_time: SystemTime) -> u64 {
+    let res = get_duration(start_time, end_time).as_millis() as u64;
+    //println!("[gbd] begin: {:?} end: {:?} duration: {}", start_time, end_time, res);
+    res
+}
+
+fn get_duration_in_ns(start_time : SystemTime, end_time: SystemTime) -> u64 {
+    let res = get_duration(start_time, end_time).as_nanos() as u64;
+    //println!("[gbd] begin: {:?} end: {:?} duration: {}", start_time, end_time, res);
+    res
+}
+
+fn generate_random_buf(buf_size : u64) -> String {
+    let mut string_to_send = String::from("");
+    let mut rng = rand::thread_rng();
+    let mut rand_num : u64;
+    for _i in 0..(buf_size / (mem::size_of::<u64>() as u64)) {
+        rand_num = rng.gen(); // Random Number
+        string_to_send.push_str(&rand_num.to_string());
+    }
+
+    string_to_send
+}
+
+fn throughput_test_internal(addr: Arc<String>, port: u16, loop_num : u64, req_per_conn: u64, 
+        buf_size : u64) -> thrift::Result<u64> {
+    /* First generate packet to send */
+    let string_to_send = generate_random_buf(buf_size);
+    //let string_to_send : Rc<String> = Rc::new(string_to_send);
+
+    let mut total_time_in_ms = 0;
+    for _j in 0..loop_num {
+        /* Start client */
+        let mut client = new_client(addr.as_ref(), port)?;
+
+        /* Send request */
+        let time_begin = SystemTime::now();
+        for _i in 0..req_per_conn {
+            let string_to_send = string_to_send.clone();
+            match client.send_packet(string_to_send) {
+                Ok(_res) => {},
+                Err(_e) => {},
+            }
+        }
+
+        let time_end = SystemTime::now();
+        total_time_in_ms += get_duration_in_ms(time_begin, time_end);
+    }
+
+    /* Return kB/s here */
+    Ok(
+        ((loop_num * req_per_conn * buf_size / 1024) as f64 / (total_time_in_ms as f64 / 1000 as f64)) as u64
+    )
+}
+
+fn throughput_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, req_per_conn: u64, 
+    buf_size : u64) -> thrift::Result<()> {
+    let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
+    let thp_array : Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+
+    /* Spawn threads */
+    for _i in 0..thread_num {
+        let addr = addr.clone();
+        let thp_array = thp_array.clone();
+        let handler = thread::spawn( move || {
+            match throughput_test_internal(addr, port, loop_num, req_per_conn, buf_size) {
+                Ok(thp) => { thp_array.lock().unwrap().push(thp); },
+                Err(_e) => { println!("[gbd] run_latency_test error here 1!"); },
+            };
+        });
+        handler_vec.push(handler);
+    }
+
+    /* Join threads */
+    for handler in handler_vec {
+        handler.join().unwrap();
+    }
+
+    /* Sort the array */
+    let mut total_thp = 0;
+    for thp in thp_array.lock().unwrap().iter() {
+        total_thp += thp;
+    }
+
+    println!("Throughput: {}kB/s", total_thp / thread_num);
+    
+    Ok(())
+}
+
+fn latency_test_internal(addr: Arc<String>, port: u16, req_per_conn: u64, 
+    buf_size : u64) -> thrift::Result<Vec<u64>> {
+    /* First generate packet to send */
+    let string_to_send = generate_random_buf(buf_size);
+    
+    /* Generate array to store the time distribution */
+    let mut time_array : Vec<u64> = Vec::new();
+    for _i in 0..req_per_conn { time_array.push(0); }
+
+    /* Start client and send request */
+    let mut client = new_client(addr.as_ref(), port)?;
+
+    for _i in 0..req_per_conn {
+        let time_begin = SystemTime::now();
+        match client.send_packet(string_to_send.clone()) {
+            Ok(_res) => {},
+            Err(_e) => {},
+        }
+        let time_end = SystemTime::now();
+        time_array[_i as usize] = get_duration_in_ns(time_begin, time_end);
+    }
+    
+    //println!("[gbd] time array 0: {}", time_array[0]);
+    Ok(time_array)
+}
+
+fn run_latency_test(addr: Arc<String>, port: u16, thread_num: u64, req_per_conn: u64, 
+    buf_size : u64) -> std::io::Result<()> {
+    let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
+    let time_array: Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
+
+    /* Spawn threads */
+    for _i in 0..thread_num {
+        let addr = addr.clone();
+        let time_array = time_array.clone();
+        let handler = thread::spawn( move || {
+            match latency_test_internal(addr, port, req_per_conn, buf_size) {
+                Ok(ref mut _vec_ret) => { time_array.lock().unwrap().append(_vec_ret); },
+                Err(_e) => { println!("[gbd] run_latency_test error here 1!"); },
+            };
+        });
+        handler_vec.push(handler);
+    }
+
+    /* Join threads */
+    for handler in handler_vec {
+        handler.join().unwrap();
+    }
+
+    /* Sort the array */
+    time_array.lock().unwrap().sort();
+
+    /* Open file and output the result */
+    let mut total_time = 0;
+    let path_str = format!("latency_{}t_{}_{}kB_in_ns", 
+            thread_num, req_per_conn, buf_size / 1024);
+    
+    let mut file = File::create(&path_str)?;
+    for time in time_array.lock().unwrap().iter() {
+        total_time += time;
+        file.write_all(format!("{}\n", time).as_bytes())?;
+    }
+
+    /* Write the Average Time */
+    file.write_all(format!("average time: {}", 
+        total_time as f64 / (req_per_conn * thread_num) as f64).as_bytes())?;
+    println!("[gbd] arrive here after open a file");
+
+    Ok(())
+}
+
+fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> thrift::Result<u64> {
+    let mut time_in_ms : u64 = 0;
+
     for _i in 0..loop_num {
+        let time_begin = SystemTime::now();
+
         let mut client = new_client(addr.as_ref(), *port)?;
-        let target_val = 3;
+        // let target_val = 3;
 
         for _i in 0..req_per_conn {
             let arg1 = 1;
             let arg2 = 2;
             match client.add(arg1, arg2) {
-				Ok(_val) => {assert_eq!(_val, target_val)},
-				Err(_e) => {println!("error");}
+				Ok(_val) => {/*assert_eq!(_val, target_val)*/},
+				Err(_e) => { println!("error"); }
 			};
         }
+
+        let time_end = SystemTime::now();
+        time_in_ms += get_duration_in_ms(time_begin, time_end);
     }
-    Ok(())
+
+    Ok(time_in_ms)
 }
 
- fn run_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, 
+ fn run_qps_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, 
         req_per_conn: u64) -> thrift::Result<()> {
-    let mut _time_vec : Vec<u128> = Vec::new();
-    let mut _time_vec = Arc::new(Mutex::new(_time_vec));
     
+    let total_time : Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+
     let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
     for _i in 0..thread_num {
         let addr = addr.clone();
-        let mut _time_vec = _time_vec.clone();
-        _time_vec.lock().unwrap().push(0);
 
+        let total_time = total_time.clone();
         let handler = thread::spawn(move || {
             // thread code
-            let time_begin = SystemTime::now();
-            
-            match call_client(addr, &port, loop_num, req_per_conn) {
-                Ok(_) => {},
-                Err(_) => {println!("[gbd] Call client error here");},
+            let mut time_in_ms = 0;
+            match test_qps(addr, &port, loop_num, req_per_conn) {
+                Ok(_time_in_ms) => { time_in_ms = _time_in_ms; },
+                Err(_) => { println!("[gbd] Call client error here"); },
             };
 
-            let time_end = SystemTime::now();
-            let mut duration_time = Duration::from_secs(1); 
-            let duration = time_end.duration_since(time_begin);
-            match duration {
-                Ok(_d) => {duration_time = _d;},
-                _ => {},
-            }
-            let time : u128 = duration_time.as_millis();
-            _time_vec.lock().unwrap()[_i as usize] = time;
+            *total_time.lock().unwrap() += time_in_ms;
             //println!("elapse: {}", time);
         });
         //print!("after spawn thread: {}", _i);
@@ -91,13 +265,9 @@ fn call_client(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) 
         handler.join().unwrap();
     }
 
-    let mut total_time : u128 = 0;
-    for time in _time_vec.lock().unwrap().iter() {
-        total_time += time;
-    }
-
-	let average_secs : u64 = 
-		(total_time as f64 / thread_num as f64) as u64 / 1000;
+    let total_time : u64 = *total_time.lock().unwrap();
+    let average_secs : u64 = 
+        (total_time as f64 / thread_num as f64) as u64 / 1000;
 	
 	println!("Average Time: {} seconds", average_secs);
     let qps : f64 = ((loop_num * req_per_conn) as f64) / 
@@ -117,6 +287,7 @@ fn main() {
         (@arg iter: --iter +takes_value "Iteration Numbers")
         (@arg thread: --thread +takes_value "Thread Numbers")
         (@arg reqnum: --reqnum +takes_value "Request Numbers")
+        (@arg bufsize: --bufsize +takes_value "Buffer Size in kB")
     );
     let matches = options.get_matches();
 
@@ -126,16 +297,28 @@ fn main() {
     let loop_num = value_t!(matches, "iter", u64).unwrap_or(5000);
     let thread_num = value_t!(matches, "thread", u64).unwrap_or(12);
     let req_per_conn = value_t!(matches, "reqnum", u64).unwrap_or(5000);
+    let buf_size_in_kb = value_t!(matches, "bufsize", u64).unwrap_or(1);
 
     println!("Client configuration: IP: {}:{}, iter: {} thread_num: {} req_per_conn {}",
                 host, port, loop_num, thread_num, req_per_conn);
     
     let host_arc = Arc::new(host.to_string());
 
-    match run_test(host_arc, port, loop_num, thread_num, req_per_conn) {
+    // match run_qps_test(host_arc, port, loop_num, thread_num, req_per_conn) {
+    //     Ok(_ok) => {},
+    //     Err(_err) => {},
+    // };
+
+    let buf_size = buf_size_in_kb * 1024;
+    match run_latency_test(host_arc, port, thread_num, req_per_conn, 
+        buf_size) {
         Ok(_ok) => {},
-        Err(_err) => {},
+        Err(_err) => { println!("run_latency_test err: {:?}", _err); }
     };
+    // match run_throughput_test(host_arc, port, loop_num, thread_num, buf_size) {
+    //     Ok(_ok) => {},
+    //     Err(_err) => {},
+    // };
         
     println!("Get the end of test");
 
@@ -176,4 +359,8 @@ fn new_client
 
     // we're done!
     Ok(SharedServiceSyncClient::new(i_prot, o_prot))
+}
+
+mod test {
+
 }

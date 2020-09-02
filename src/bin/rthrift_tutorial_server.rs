@@ -101,4 +101,9 @@ impl SharedServiceSyncHandler for SharedServiceServer {
         //println!("handling add: n1:{} n2:{}", num1, num2);
         Ok(num1 + num2)
     }
+    fn handle_send_packet(&self, _str: String) -> thrift::Result<i32> {
+        let output: std::string::String = String::from(_str);
+        //println!("output: {}", output);
+        Ok(0)
+    }
 }
