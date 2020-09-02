@@ -46,7 +46,7 @@ fn get_duration(start_time : SystemTime, end_time: SystemTime) -> Duration {
     let mut duration_time = Duration::from_secs(1);
     match duration {
         Ok(_d) => {duration_time = _d;},
-        _ => {},
+        _ => { println!("[gbd] get duration error!"); },
     }
     duration_time
 }
