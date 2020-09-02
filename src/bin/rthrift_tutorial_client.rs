@@ -75,10 +75,10 @@ async fn async_run_client_one(host : String, port: u16,
 
     // let's do...a multiply!
     let res = client
-        .calculate(logid, Work::new(7, 8, Operation::MULTIPLY, None)).await?;
+        .calculate(logid, Work::new(7, 8, Operation::Multiply, None)).await?;
     println!("multiplied 7 and 8 and got {}", res);
 
-    let res = client.calculate(77, Work::new(2, 1, Operation::DIVIDE, "we bad".to_owned())).await;
+    let res = client.calculate(77, Work::new(2, 1, Operation::Divide, "we bad".to_owned())).await;
 
     // we should have gotten an exception back
     let mut ret_val : i32;
