@@ -38,11 +38,15 @@ use std::vec::Vec;
 fn call_client(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> thrift::Result<()> {
     for _i in 0..loop_num {
         let mut client = new_client(addr.as_ref(), *port)?;
-        
+        let target_val = 3;
+
         for _i in 0..req_per_conn {
             let arg1 = 1;
             let arg2 = 2;
-            client.add(arg1, arg2)?;
+            match client.add(arg1, arg2) {
+				Ok(_val) => {assert_eq!(_val, target_val)},
+				Err(_e) => {println!("error");}
+			};
         }
     }
     Ok(())
@@ -87,14 +91,19 @@ fn call_client(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) 
         handler.join().unwrap();
     }
 
-    let mut total : u128 = 0;
+    let mut total_time : u128 = 0;
     for time in _time_vec.lock().unwrap().iter() {
-        total += time;
+        total_time += time;
     }
 
-    let qps : f64 = ((thread_num * loop_num * req_per_conn) as f64) / (total as f64 / 1000 as f64);
+	let average_secs : u64 = 
+		(total_time as f64 / thread_num as f64) as u64 / 1000;
+	
+	println!("Average Time: {} seconds", average_secs);
+    let qps : f64 = ((loop_num * req_per_conn) as f64) / 
+		(average_secs as f64);
 
-    println!("{} Req/ms", qps);
+    println!("{} Req/s", qps);
     Ok(())
 }
 

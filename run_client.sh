@@ -1,7 +1,11 @@
 #!/bin/bash
 
-if [ $# == 4 ]; then
-    ./client --host $1 --port $2 --iter $3 --thread $4
-else
-    echo "Usage: ./client --host [host] --port [port] --iter[iter_num] --thread[thread_num]"
-fi
+TARGET_HOST="10.108.21.59"
+PORT=11235
+TARGET_PORT=11235
+THREAD_NUM=32
+ITER_NUM=100
+REQ_PER_CONN=100
+
+./client --host $TARGET_HOST --port $PORT --reqnum $REQ_PER_CONN \
+	--iter $ITER_NUM --thread $THREAD_NUM
