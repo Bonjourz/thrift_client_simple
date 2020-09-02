@@ -1,7 +1,1 @@
-lib/target
-lib/test
-src/lib/test
-src/lib/target
-.vscode*
 /target
-**/*.rs.bk
