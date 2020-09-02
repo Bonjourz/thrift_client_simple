@@ -232,29 +232,30 @@ fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> 
         let time_end = SystemTime::now();
         time_in_ns += get_duration_in_ns(time_begin, time_end);
     }
+    
 
-    Ok(time_in_ns)
+    let qps = (loop_num * req_per_conn) as f64 / 
+        (time_in_ns as f64 / 1_000_000_000 as f64);
+    Ok(qps as u64)
 }
 
  fn run_qps_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, 
         req_per_conn: u64) -> thrift::Result<()> {
     
-    let total_time_in_ns : Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
+    let qps_total : Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
 
     let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
     for _i in 0..thread_num {
         let addr = addr.clone();
 
-        let total_time_in_ns = total_time_in_ns.clone();
+        let qps_total = qps_total.clone();
         let handler = thread::spawn(move || {
             // thread code
-            let mut time_in_ns = 0;
             match test_qps(addr, &port, loop_num, req_per_conn) {
-                Ok(_time_in_ns) => { time_in_ns = _time_in_ns; },
+                Ok(_qps) => { *qps_total.lock().unwrap() += _qps; },
                 Err(_) => { println!("[gbd] Call client error here"); },
             };
 
-            *total_time_in_ns.lock().unwrap() += time_in_ns;
             //println!("elapse: {}", time);
         });
         //print!("after spawn thread: {}", _i);
@@ -265,13 +266,7 @@ fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> 
         handler.join().unwrap();
     }
 
-    let average_time_in_ns : u64 = *total_time_in_ns.lock().unwrap() / thread_num;
-	
-	//println!("Average Time: {} ns", average_time_in_ns);
-    let qps : f64 = ((loop_num * req_per_conn) as f64) / 
-		(average_time_in_ns as f64 / 1_000_000_000 as f64);
-
-    println!("{} Req/s", qps);
+    println!("{} Req/s", *qps_total.lock().unwrap() / thread_num);
     Ok(())
 }
 
