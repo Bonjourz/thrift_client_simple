@@ -35,6 +35,7 @@ use thrift::server::TProcessor;
 pub trait TSharedServiceSyncClient {
   fn add(&mut self, arg1: i32, arg2: i32) -> thrift::Result<i32>;
   fn send_packet(&mut self, str: String) -> thrift::Result<i32>;
+  fn send_empty(&mut self) -> thrift::Result<()>;
 }
 
 pub trait TSharedServiceSyncClientMarker {}
@@ -115,6 +116,33 @@ impl <C: TThriftClient + TSharedServiceSyncClientMarker> TSharedServiceSyncClien
       result.ok_or()
     }
   }
+  fn send_empty(&mut self) -> thrift::Result<()> {
+    (
+      {
+        self.increment_sequence_number();
+        let message_ident = TMessageIdentifier::new("send_empty", TMessageType::Call, self.sequence_number());
+        let call_args = SharedServiceSendEmptyArgs {  };
+        self.o_prot_mut().write_message_begin(&message_ident)?;
+        call_args.write_to_out_protocol(self.o_prot_mut())?;
+        self.o_prot_mut().write_message_end()?;
+        self.o_prot_mut().flush()
+      }
+    )?;
+    {
+      let message_ident = self.i_prot_mut().read_message_begin()?;
+      verify_expected_sequence_number(self.sequence_number(), message_ident.sequence_number)?;
+      verify_expected_service_call("send_empty", &message_ident.name)?;
+      if message_ident.message_type == TMessageType::Exception {
+        let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut())?;
+        self.i_prot_mut().read_message_end()?;
+        return Err(thrift::Error::Application(remote_error))
+      }
+      verify_expected_message_type(TMessageType::Reply, message_ident.message_type)?;
+      let result = SharedServiceSendEmptyResult::read_from_in_protocol(self.i_prot_mut())?;
+      self.i_prot_mut().read_message_end()?;
+      result.ok_or()
+    }
+  }
 }
 
 //
@@ -126,6 +154,7 @@ impl <C: TThriftClient + TSharedServiceSyncClientMarker> TSharedServiceSyncClien
 pub trait SharedServiceSyncHandler {
   fn handle_add(&self, arg1: i32, arg2: i32) -> thrift::Result<i32>;
   fn handle_send_packet(&self, str: String) -> thrift::Result<i32>;
+  fn handle_send_empty(&self) -> thrift::Result<()>;
 }
 
 pub struct SharedServiceSyncProcessor<H: SharedServiceSyncHandler> {
@@ -143,6 +172,9 @@ impl <H: SharedServiceSyncHandler> SharedServiceSyncProcessor<H> {
   }
   fn process_send_packet(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     TSharedServiceProcessFunctions::process_send_packet(&self.handler, incoming_sequence_number, i_prot, o_prot)
+  }
+  fn process_send_empty(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    TSharedServiceProcessFunctions::process_send_empty(&self.handler, incoming_sequence_number, i_prot, o_prot)
   }
 }
 
@@ -223,6 +255,43 @@ impl TSharedServiceProcessFunctions {
       },
     }
   }
+  pub fn process_send_empty<H: SharedServiceSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let _ = SharedServiceSendEmptyArgs::read_from_in_protocol(i_prot)?;
+    match handler.handle_send_empty() {
+      Ok(_) => {
+        let message_ident = TMessageIdentifier::new("send_empty", TMessageType::Reply, incoming_sequence_number);
+        o_prot.write_message_begin(&message_ident)?;
+        let ret = SharedServiceSendEmptyResult {  };
+        ret.write_to_out_protocol(o_prot)?;
+        o_prot.write_message_end()?;
+        o_prot.flush()
+      },
+      Err(e) => {
+        match e {
+          thrift::Error::Application(app_err) => {
+            let message_ident = TMessageIdentifier::new("send_empty", TMessageType::Exception, incoming_sequence_number);
+            o_prot.write_message_begin(&message_ident)?;
+            thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot)?;
+            o_prot.write_message_end()?;
+            o_prot.flush()
+          },
+          _ => {
+            let ret_err = {
+              ApplicationError::new(
+                ApplicationErrorKind::Unknown,
+                e.description()
+              )
+            };
+            let message_ident = TMessageIdentifier::new("send_empty", TMessageType::Exception, incoming_sequence_number);
+            o_prot.write_message_begin(&message_ident)?;
+            thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot)?;
+            o_prot.write_message_end()?;
+            o_prot.flush()
+          },
+        }
+      },
+    }
+  }
 }
 
 impl <H: SharedServiceSyncHandler> TProcessor for SharedServiceSyncProcessor<H> {
@@ -234,6 +303,9 @@ impl <H: SharedServiceSyncHandler> TProcessor for SharedServiceSyncProcessor<H> 
       },
       "send_packet" => {
         self.process_send_packet(message_ident.sequence_number, i_prot, o_prot)
+      },
+      "send_empty" => {
+        self.process_send_empty(message_ident.sequence_number, i_prot, o_prot)
       },
       method => {
         Err(
@@ -486,6 +558,81 @@ impl SharedServiceSendPacketResult {
         )
       )
     }
+  }
+}
+
+//
+// SharedServiceSendEmptyArgs
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct SharedServiceSendEmptyArgs {
+}
+
+impl SharedServiceSendEmptyArgs {
+  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SharedServiceSendEmptyArgs> {
+    i_prot.read_struct_begin()?;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    let ret = SharedServiceSendEmptyArgs {};
+    Ok(ret)
+  }
+  fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("send_empty_args");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+}
+
+//
+// SharedServiceSendEmptyResult
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct SharedServiceSendEmptyResult {
+}
+
+impl SharedServiceSendEmptyResult {
+  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SharedServiceSendEmptyResult> {
+    i_prot.read_struct_begin()?;
+    loop {
+      let field_ident = i_prot.read_field_begin()?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        _ => {
+          i_prot.skip(field_ident.field_type)?;
+        },
+      };
+      i_prot.read_field_end()?;
+    }
+    i_prot.read_struct_end()?;
+    let ret = SharedServiceSendEmptyResult {};
+    Ok(ret)
+  }
+  fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("SharedServiceSendEmptyResult");
+    o_prot.write_struct_begin(&struct_ident)?;
+    o_prot.write_field_stop()?;
+    o_prot.write_struct_end()
+  }
+  fn ok_or(self) -> thrift::Result<()> {
+    Ok(())
   }
 }
 

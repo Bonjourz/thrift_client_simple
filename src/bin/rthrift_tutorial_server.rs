@@ -106,4 +106,8 @@ impl SharedServiceSyncHandler for SharedServiceServer {
         //println!("output: {}", output);
         Ok(0)
     }
+
+    fn handle_send_empty(&self) -> thrift::Result<()> {
+        Ok(())
+    }
 }

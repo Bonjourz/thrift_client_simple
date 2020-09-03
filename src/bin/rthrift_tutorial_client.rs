@@ -230,7 +230,7 @@ fn test_qps(loop_num: u64, req_per_conn: u64, t_idx : u64) -> thrift::Result<()>
 
         for _i in 0..req_per_conn {
 			let time_begin = SystemTime::now();
-            client.add(1, 2)?; 
+            client.send_empty()?; 
 			let time_end = SystemTime::now();
 			latency_total += get_duration_in_ns(time_begin, time_end); 
 			/* 
