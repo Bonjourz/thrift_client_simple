@@ -17,14 +17,16 @@
 
 //! Types used to implement a Thrift server.
 
-use crate::protocol::{TInputProtocol, TMessageIdentifier, TMessageType, TOutputProtocol};
+use crate::protocol::{TAsyncInputProtocol, TMessageIdentifier, TMessageType, TAsyncOutputProtocol};
 use crate::{ApplicationError, ApplicationErrorKind};
 
 mod multiplexed;
 mod threaded;
 
-pub use self::multiplexed::TMultiplexedProcessor;
+// pub use self::multiplexed::TMultiplexedProcessor;
 pub use self::threaded::TServer;
+
+use async_trait::async_trait;
 
 /// Handles incoming Thrift messages and dispatches them to the user-defined
 /// handler functions.
@@ -84,6 +86,7 @@ pub use self::threaded::TServer;
 /// // at this point you can pass the processor to the server
 /// // let server = TServer::new(..., processor);
 /// ```
+#[async_trait]
 pub trait TProcessor {
     /// Process a Thrift service call.
     ///
@@ -91,7 +94,7 @@ pub trait TProcessor {
     /// the response to `o`.
     ///
     /// Returns `()` if the handler was executed; `Err` otherwise.
-    fn process(&self, i: &mut dyn TInputProtocol, o: &mut dyn TOutputProtocol) -> crate::Result<()>;
+    async fn process(&self, i: &mut dyn TAsyncInputProtocol, o: &mut dyn TAsyncInputProtocol) -> crate::Result<()>;
 }
 
 /// Convenience function used in generated `TProcessor` implementations to
@@ -99,7 +102,7 @@ pub trait TProcessor {
 pub fn handle_process_result(
     msg_ident: &TMessageIdentifier,
     res: crate::Result<()>,
-    o_prot: &mut dyn TOutputProtocol,
+    o_prot: &mut dyn TAsyncOutputProtocol,
 ) -> crate::Result<()> {
     if let Err(e) = res {
         let e = match e {

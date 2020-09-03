@@ -64,6 +64,8 @@ use std::fmt::{Display, Formatter};
 use crate::transport::{TReadTransport, TWriteTransport};
 use crate::{ProtocolError, ProtocolErrorKind};
 
+use async_trait::async_trait;
+
 #[cfg(test)]
 macro_rules! assert_eq_written_bytes {
     ($o_prot:ident, $expected_bytes:ident) => {{
@@ -92,15 +94,15 @@ mod multiplexed;
 mod stored;
 
 pub use self::binary::{
-    TBinaryInputProtocol, TBinaryInputProtocolFactory, TBinaryOutputProtocol,
-    TBinaryOutputProtocolFactory,
+    TBinaryInputProtocol, /*TBinaryInputProtocolFactory,*/ TAsyncBinaryOutputProtocol,
+    /*TBinaryOutputProtocolFactory,*/
 };
-pub use self::compact::{
-    TCompactInputProtocol, TCompactInputProtocolFactory, TCompactOutputProtocol,
-    TCompactOutputProtocolFactory,
-};
-pub use self::multiplexed::TMultiplexedOutputProtocol;
-pub use self::stored::TStoredInputProtocol;
+// pub use self::compact::{
+//     TCompactInputProtocol, TCompactInputProtocolFactory, TCompactOutputProtocol,
+//     TCompactOutputProtocolFactory,
+// };
+// pub use self::multiplexed::TMultiplexedOutputProtocol;
+// pub use self::stored::TStoredInputProtocol;
 
 // Default maximum depth to which `TInputProtocol::skip` will skip a Thrift
 // field. A default is necessary because Thrift structs or collections may
@@ -136,54 +138,55 @@ const MAXIMUM_SKIP_DEPTH: i8 = 64;
 /// let field_contents = protocol.read_string().unwrap();
 /// let field_end = protocol.read_field_end().unwrap();
 /// ```
-pub trait TInputProtocol {
+#[async_trait]
+pub trait TAsyncInputProtocol {
     /// Read the beginning of a Thrift message.
-    fn read_message_begin(&mut self) -> crate::Result<TMessageIdentifier>;
+    async fn read_message_begin(&mut self) -> crate::Result<TMessageIdentifier>;
     /// Read the end of a Thrift message.
-    fn read_message_end(&mut self) -> crate::Result<()>;
+    async fn read_message_end(&mut self) -> crate::Result<()>;
     /// Read the beginning of a Thrift struct.
-    fn read_struct_begin(&mut self) -> crate::Result<Option<TStructIdentifier>>;
+    async fn read_struct_begin(&mut self) -> crate::Result<Option<TStructIdentifier>>;
     /// Read the end of a Thrift struct.
-    fn read_struct_end(&mut self) -> crate::Result<()>;
+    async fn read_struct_end(&mut self) -> crate::Result<()>;
     /// Read the beginning of a Thrift struct field.
-    fn read_field_begin(&mut self) -> crate::Result<TFieldIdentifier>;
+    async fn read_field_begin(&mut self) -> crate::Result<TFieldIdentifier>;
     /// Read the end of a Thrift struct field.
-    fn read_field_end(&mut self) -> crate::Result<()>;
+    async fn read_field_end(&mut self) -> crate::Result<()>;
     /// Read a bool.
-    fn read_bool(&mut self) -> crate::Result<bool>;
+    async fn read_bool(&mut self) -> crate::Result<bool>;
     /// Read a fixed-length byte array.
-    fn read_bytes(&mut self) -> crate::Result<Vec<u8>>;
+    async fn read_bytes(&mut self) -> crate::Result<Vec<u8>>;
     /// Read a word.
-    fn read_i8(&mut self) -> crate::Result<i8>;
+    async fn read_i8(&mut self) -> crate::Result<i8>;
     /// Read a 16-bit signed integer.
-    fn read_i16(&mut self) -> crate::Result<i16>;
+    async fn read_i16(&mut self) -> crate::Result<i16>;
     /// Read a 32-bit signed integer.
-    fn read_i32(&mut self) -> crate::Result<i32>;
+    async fn read_i32(&mut self) -> crate::Result<i32>;
     /// Read a 64-bit signed integer.
-    fn read_i64(&mut self) -> crate::Result<i64>;
+    async fn read_i64(&mut self) -> crate::Result<i64>;
     /// Read a 64-bit float.
-    fn read_double(&mut self) -> crate::Result<f64>;
+    async fn read_double(&mut self) -> crate::Result<f64>;
     /// Read a fixed-length string (not null terminated).
-    fn read_string(&mut self) -> crate::Result<String>;
+    async fn read_string(&mut self) -> crate::Result<String>;
     /// Read the beginning of a list.
-    fn read_list_begin(&mut self) -> crate::Result<TListIdentifier>;
+    async fn read_list_begin(&mut self) -> crate::Result<TListIdentifier>;
     /// Read the end of a list.
-    fn read_list_end(&mut self) -> crate::Result<()>;
+    async fn read_list_end(&mut self) -> crate::Result<()>;
     /// Read the beginning of a set.
-    fn read_set_begin(&mut self) -> crate::Result<TSetIdentifier>;
+    async fn read_set_begin(&mut self) -> crate::Result<TSetIdentifier>;
     /// Read the end of a set.
-    fn read_set_end(&mut self) -> crate::Result<()>;
+    async fn read_set_end(&mut self) -> crate::Result<()>;
     /// Read the beginning of a map.
-    fn read_map_begin(&mut self) -> crate::Result<TMapIdentifier>;
+    async fn read_map_begin(&mut self) -> crate::Result<TMapIdentifier>;
     /// Read the end of a map.
-    fn read_map_end(&mut self) -> crate::Result<()>;
+    async fn read_map_end(&mut self) -> crate::Result<()>;
     /// Skip a field with type `field_type` recursively until the default
     /// maximum skip depth is reached.
-    fn skip(&mut self, field_type: TType) -> crate::Result<()> {
-        self.skip_till_depth(field_type, MAXIMUM_SKIP_DEPTH)
+    async fn skip(&mut self, field_type: TType) -> crate::Result<()> {
+        self.skip_till_depth(field_type, MAXIMUM_SKIP_DEPTH).await
     }
     /// Skip a field with type `field_type` recursively up to `depth` levels.
-    fn skip_till_depth(&mut self, field_type: TType, depth: i8) -> crate::Result<()> {
+    async fn skip_till_depth(&mut self, field_type: TType, depth: i8) -> crate::Result<()> {
         if depth == 0 {
             return Err(crate::Error::Protocol(ProtocolError {
                 kind: ProtocolErrorKind::DepthLimit,
@@ -192,40 +195,68 @@ pub trait TInputProtocol {
         }
 
         match field_type {
-            TType::Bool => self.read_bool().map(|_| ()),
-            TType::I08 => self.read_i8().map(|_| ()),
-            TType::I16 => self.read_i16().map(|_| ()),
-            TType::I32 => self.read_i32().map(|_| ()),
-            TType::I64 => self.read_i64().map(|_| ()),
-            TType::Double => self.read_double().map(|_| ()),
-            TType::String => self.read_string().map(|_| ()),
+            TType::Bool => {
+                let has_get = self.read_bool().await;
+                has_get.map(|_| ())
+            },
+
+            TType::I08 => {
+                let has_get = self.read_i8().await;
+                has_get.map(|_| ())
+            },
+
+            TType::I16 => {
+                let has_get = self.read_i16().await;
+                has_get.map(|_| ())
+            },
+
+            TType::I32 => {
+                let has_get = self.read_i32().await;
+                has_get.map(|_| ())
+            },
+
+            TType::I64 => {
+                let has_get = self.read_i64().await;
+                has_get.map(|_| ())
+            },
+
+            TType::Double => {
+                let has_get = self.read_double().await;
+                has_get.map(|_| ())
+            },
+
+            TType::String => {
+                let has_get = self.read_string().await;
+                has_get.map(|_| ())
+            },
+
             TType::Struct => {
-                self.read_struct_begin()?;
+                self.read_struct_begin().await?;
                 loop {
-                    let field_ident = self.read_field_begin()?;
+                    let field_ident = self.read_field_begin().await?;
                     if field_ident.field_type == TType::Stop {
                         break;
                     }
-                    self.skip_till_depth(field_ident.field_type, depth - 1)?;
+                    self.skip_till_depth(field_ident.field_type, depth - 1).await?;
                 }
-                self.read_struct_end()
+                self.read_struct_end().await
             }
             TType::List => {
-                let list_ident = self.read_list_begin()?;
+                let list_ident = self.read_list_begin().await?;
                 for _ in 0..list_ident.size {
-                    self.skip_till_depth(list_ident.element_type, depth - 1)?;
+                    self.skip_till_depth(list_ident.element_type, depth - 1).await?;
                 }
-                self.read_list_end()
+                self.read_list_end().await
             }
             TType::Set => {
-                let set_ident = self.read_set_begin()?;
+                let set_ident = self.read_set_begin().await?;
                 for _ in 0..set_ident.size {
-                    self.skip_till_depth(set_ident.element_type, depth - 1)?;
+                    self.skip_till_depth(set_ident.element_type, depth - 1).await?;
                 }
-                self.read_set_end()
+                self.read_set_end().await
             }
             TType::Map => {
-                let map_ident = self.read_map_begin()?;
+                let map_ident = self.read_map_begin().await?;
                 for _ in 0..map_ident.size {
                     let key_type = map_ident
                         .key_type
@@ -233,10 +264,10 @@ pub trait TInputProtocol {
                     let val_type = map_ident
                         .value_type
                         .expect("non-zero sized map should contain value type");
-                    self.skip_till_depth(key_type, depth - 1)?;
-                    self.skip_till_depth(val_type, depth - 1)?;
+                    self.skip_till_depth(key_type, depth - 1).await?;
+                    self.skip_till_depth(val_type, depth - 1).await?;
                 }
-                self.read_map_end()
+                self.read_map_end().await
             }
             u => Err(crate::Error::Protocol(ProtocolError {
                 kind: ProtocolErrorKind::Unknown,
@@ -251,7 +282,7 @@ pub trait TInputProtocol {
     /// Read an unsigned byte.
     ///
     /// This method should **never** be used in generated code.
-    fn read_byte(&mut self) -> crate::Result<u8>;
+    async fn read_byte(&mut self) -> crate::Result<u8>;
 }
 
 /// Converts Thrift identifiers, primitives, containers or structs into a
@@ -285,52 +316,53 @@ pub trait TInputProtocol {
 /// protocol.write_string("foo").unwrap();
 /// protocol.write_field_end().unwrap();
 /// ```
-pub trait TOutputProtocol {
+#[async_trait]
+pub trait TAsyncOutputProtocol {
     /// Write the beginning of a Thrift message.
-    fn write_message_begin(&mut self, identifier: &TMessageIdentifier) -> crate::Result<()>;
+    async fn write_message_begin(&mut self, identifier: &TMessageIdentifier) -> crate::Result<()>;
     /// Write the end of a Thrift message.
-    fn write_message_end(&mut self) -> crate::Result<()>;
+    async fn write_message_end(&mut self) -> crate::Result<()>;
     /// Write the beginning of a Thrift struct.
-    fn write_struct_begin(&mut self, identifier: &TStructIdentifier) -> crate::Result<()>;
+    async fn write_struct_begin(&mut self, identifier: &TStructIdentifier) -> crate::Result<()>;
     /// Write the end of a Thrift struct.
-    fn write_struct_end(&mut self) -> crate::Result<()>;
+    async fn write_struct_end(&mut self) -> crate::Result<()>;
     /// Write the beginning of a Thrift field.
-    fn write_field_begin(&mut self, identifier: &TFieldIdentifier) -> crate::Result<()>;
+    async fn write_field_begin(&mut self, identifier: &TFieldIdentifier) -> crate::Result<()>;
     /// Write the end of a Thrift field.
-    fn write_field_end(&mut self) -> crate::Result<()>;
+    async fn write_field_end(&mut self) -> crate::Result<()>;
     /// Write a STOP field indicating that all the fields in a struct have been
     /// written.
-    fn write_field_stop(&mut self) -> crate::Result<()>;
+    async fn write_field_stop(&mut self) -> crate::Result<()>;
     /// Write a bool.
-    fn write_bool(&mut self, b: bool) -> crate::Result<()>;
+    async fn write_bool(&mut self, b: bool) -> crate::Result<()>;
     /// Write a fixed-length byte array.
-    fn write_bytes(&mut self, b: &[u8]) -> crate::Result<()>;
+    async fn write_bytes(&mut self, b: &[u8]) -> crate::Result<()>;
     /// Write an 8-bit signed integer.
-    fn write_i8(&mut self, i: i8) -> crate::Result<()>;
+    async fn write_i8(&mut self, i: i8) -> crate::Result<()>;
     /// Write a 16-bit signed integer.
-    fn write_i16(&mut self, i: i16) -> crate::Result<()>;
+    async fn write_i16(&mut self, i: i16) -> crate::Result<()>;
     /// Write a 32-bit signed integer.
-    fn write_i32(&mut self, i: i32) -> crate::Result<()>;
+    async fn write_i32(&mut self, i: i32) -> crate::Result<()>;
     /// Write a 64-bit signed integer.
-    fn write_i64(&mut self, i: i64) -> crate::Result<()>;
+    async fn write_i64(&mut self, i: i64) -> crate::Result<()>;
     /// Write a 64-bit float.
-    fn write_double(&mut self, d: f64) -> crate::Result<()>;
+    async fn write_double(&mut self, d: f64) -> crate::Result<()>;
     /// Write a fixed-length string.
-    fn write_string(&mut self, s: &str) -> crate::Result<()>;
+    async fn write_string(&mut self, s: &str) -> crate::Result<()>;
     /// Write the beginning of a list.
-    fn write_list_begin(&mut self, identifier: &TListIdentifier) -> crate::Result<()>;
+    async fn write_list_begin(&mut self, identifier: &TListIdentifier) -> crate::Result<()>;
     /// Write the end of a list.
-    fn write_list_end(&mut self) -> crate::Result<()>;
+    async fn write_list_end(&mut self) -> crate::Result<()>;
     /// Write the beginning of a set.
-    fn write_set_begin(&mut self, identifier: &TSetIdentifier) -> crate::Result<()>;
+    async fn write_set_begin(&mut self, identifier: &TSetIdentifier) -> crate::Result<()>;
     /// Write the end of a set.
-    fn write_set_end(&mut self) -> crate::Result<()>;
+    async fn write_set_end(&mut self) -> crate::Result<()>;
     /// Write the beginning of a map.
-    fn write_map_begin(&mut self, identifier: &TMapIdentifier) -> crate::Result<()>;
+    async fn write_map_begin(&mut self, identifier: &TMapIdentifier) -> crate::Result<()>;
     /// Write the end of a map.
-    fn write_map_end(&mut self) -> crate::Result<()>;
+    async fn write_map_end(&mut self) -> crate::Result<()>;
     /// Flush buffered bytes to the underlying transport.
-    fn flush(&mut self) -> crate::Result<()>;
+    async fn flush(&mut self) -> crate::Result<()>;
 
     // utility (DO NOT USE IN GENERATED CODE!!!!)
     //
@@ -338,192 +370,194 @@ pub trait TOutputProtocol {
     /// Write an unsigned byte.
     ///
     /// This method should **never** be used in generated code.
-    fn write_byte(&mut self, b: u8) -> crate::Result<()>; // FIXME: REMOVE
+    async fn write_byte(&mut self, b: u8) -> crate::Result<()>; // FIXME: REMOVE
 }
 
-impl<P> TInputProtocol for Box<P>
+#[async_trait]
+impl<P> TAsyncInputProtocol for Box<P>
 where
-    P: TInputProtocol + ?Sized,
+    P: TAsyncInputProtocol + ?Sized + Send,
 {
-    fn read_message_begin(&mut self) -> crate::Result<TMessageIdentifier> {
-        (**self).read_message_begin()
+    async fn read_message_begin(&mut self) -> crate::Result<TMessageIdentifier> {
+        (**self).read_message_begin().await
     }
 
-    fn read_message_end(&mut self) -> crate::Result<()> {
-        (**self).read_message_end()
+    async fn read_message_end(&mut self) -> crate::Result<()> {
+        (**self).read_message_end().await
     }
 
-    fn read_struct_begin(&mut self) -> crate::Result<Option<TStructIdentifier>> {
-        (**self).read_struct_begin()
+    async fn read_struct_begin(&mut self) -> crate::Result<Option<TStructIdentifier>> {
+        (**self).read_struct_begin().await
     }
 
-    fn read_struct_end(&mut self) -> crate::Result<()> {
-        (**self).read_struct_end()
+    async fn read_struct_end(&mut self) -> crate::Result<()> {
+        (**self).read_struct_end().await
     }
 
-    fn read_field_begin(&mut self) -> crate::Result<TFieldIdentifier> {
-        (**self).read_field_begin()
+    async fn read_field_begin(&mut self) -> crate::Result<TFieldIdentifier> {
+        (**self).read_field_begin().await
     }
 
-    fn read_field_end(&mut self) -> crate::Result<()> {
-        (**self).read_field_end()
+    async fn read_field_end(&mut self) -> crate::Result<()> {
+        (**self).read_field_end().await
     }
 
-    fn read_bool(&mut self) -> crate::Result<bool> {
-        (**self).read_bool()
+    async fn read_bool(&mut self) -> crate::Result<bool> {
+        (**self).read_bool().await
     }
 
-    fn read_bytes(&mut self) -> crate::Result<Vec<u8>> {
-        (**self).read_bytes()
+    async fn read_bytes(&mut self) -> crate::Result<Vec<u8>> {
+        (**self).read_bytes().await
     }
 
-    fn read_i8(&mut self) -> crate::Result<i8> {
-        (**self).read_i8()
+    async fn read_i8(&mut self) -> crate::Result<i8> {
+        (**self).read_i8().await
     }
 
-    fn read_i16(&mut self) -> crate::Result<i16> {
-        (**self).read_i16()
+    async fn read_i16(&mut self) -> crate::Result<i16> {
+        (**self).read_i16().await
     }
 
-    fn read_i32(&mut self) -> crate::Result<i32> {
-        (**self).read_i32()
+    async fn read_i32(&mut self) -> crate::Result<i32> {
+        (**self).read_i32().await
     }
 
-    fn read_i64(&mut self) -> crate::Result<i64> {
-        (**self).read_i64()
+    async fn read_i64(&mut self) -> crate::Result<i64> {
+        (**self).read_i64().await
     }
 
-    fn read_double(&mut self) -> crate::Result<f64> {
-        (**self).read_double()
+    async fn read_double(&mut self) -> crate::Result<f64> {
+        (**self).read_double().await
     }
 
-    fn read_string(&mut self) -> crate::Result<String> {
-        (**self).read_string()
+    async fn read_string(&mut self) -> crate::Result<String> {
+        (**self).read_string().await
     }
 
-    fn read_list_begin(&mut self) -> crate::Result<TListIdentifier> {
-        (**self).read_list_begin()
+    async fn read_list_begin(&mut self) -> crate::Result<TListIdentifier> {
+        (**self).read_list_begin().await
     }
 
-    fn read_list_end(&mut self) -> crate::Result<()> {
-        (**self).read_list_end()
+    async fn read_list_end(&mut self) -> crate::Result<()> {
+        (**self).read_list_end().await
     }
 
-    fn read_set_begin(&mut self) -> crate::Result<TSetIdentifier> {
-        (**self).read_set_begin()
+    async fn read_set_begin(&mut self) -> crate::Result<TSetIdentifier> {
+        (**self).read_set_begin().await
     }
 
-    fn read_set_end(&mut self) -> crate::Result<()> {
-        (**self).read_set_end()
+    async fn read_set_end(&mut self) -> crate::Result<()> {
+        (**self).read_set_end().await
     }
 
-    fn read_map_begin(&mut self) -> crate::Result<TMapIdentifier> {
-        (**self).read_map_begin()
+    async fn read_map_begin(&mut self) -> crate::Result<TMapIdentifier> {
+        (**self).read_map_begin().await
     }
 
-    fn read_map_end(&mut self) -> crate::Result<()> {
-        (**self).read_map_end()
+    async fn read_map_end(&mut self) -> crate::Result<()> {
+        (**self).read_map_end().await
     }
 
-    fn read_byte(&mut self) -> crate::Result<u8> {
-        (**self).read_byte()
+    async fn read_byte(&mut self) -> crate::Result<u8> {
+        (**self).read_byte().await
     }
 }
 
-impl<P> TOutputProtocol for Box<P>
+#[async_trait]
+impl<P> TAsyncOutputProtocol for Box<P>
 where
-    P: TOutputProtocol + ?Sized,
+    P: TAsyncOutputProtocol + ?Sized + Send,
 {
-    fn write_message_begin(&mut self, identifier: &TMessageIdentifier) -> crate::Result<()> {
-        (**self).write_message_begin(identifier)
+    async fn write_message_begin(&mut self, identifier: &TMessageIdentifier) -> crate::Result<()> {
+        (**self).write_message_begin(identifier).await
     }
 
-    fn write_message_end(&mut self) -> crate::Result<()> {
-        (**self).write_message_end()
+    async fn write_message_end(&mut self) -> crate::Result<()> {
+        (**self).write_message_end().await
     }
 
-    fn write_struct_begin(&mut self, identifier: &TStructIdentifier) -> crate::Result<()> {
-        (**self).write_struct_begin(identifier)
+    async fn write_struct_begin(&mut self, identifier: &TStructIdentifier) -> crate::Result<()> {
+        (**self).write_struct_begin(identifier).await
     }
 
-    fn write_struct_end(&mut self) -> crate::Result<()> {
-        (**self).write_struct_end()
+    async fn write_struct_end(&mut self) -> crate::Result<()> {
+        (**self).write_struct_end().await
     }
 
-    fn write_field_begin(&mut self, identifier: &TFieldIdentifier) -> crate::Result<()> {
-        (**self).write_field_begin(identifier)
+    async fn write_field_begin(&mut self, identifier: &TFieldIdentifier) -> crate::Result<()> {
+        (**self).write_field_begin(identifier).await
     }
 
-    fn write_field_end(&mut self) -> crate::Result<()> {
-        (**self).write_field_end()
+    async fn write_field_end(&mut self) -> crate::Result<()> {
+        (**self).write_field_end().await
     }
 
-    fn write_field_stop(&mut self) -> crate::Result<()> {
-        (**self).write_field_stop()
+    async fn write_field_stop(&mut self) -> crate::Result<()> {
+        (**self).write_field_stop().await
     }
 
-    fn write_bool(&mut self, b: bool) -> crate::Result<()> {
-        (**self).write_bool(b)
+    async fn write_bool(&mut self, b: bool) -> crate::Result<()> {
+        (**self).write_bool(b).await
     }
 
-    fn write_bytes(&mut self, b: &[u8]) -> crate::Result<()> {
-        (**self).write_bytes(b)
+    async fn write_bytes(&mut self, b: &[u8]) -> crate::Result<()> {
+        (**self).write_bytes(b).await
     }
 
-    fn write_i8(&mut self, i: i8) -> crate::Result<()> {
-        (**self).write_i8(i)
+    async fn write_i8(&mut self, i: i8) -> crate::Result<()> {
+        (**self).write_i8(i).await
     }
 
-    fn write_i16(&mut self, i: i16) -> crate::Result<()> {
-        (**self).write_i16(i)
+    async fn write_i16(&mut self, i: i16) -> crate::Result<()> {
+        (**self).write_i16(i).await
     }
 
-    fn write_i32(&mut self, i: i32) -> crate::Result<()> {
-        (**self).write_i32(i)
+    async fn write_i32(&mut self, i: i32) -> crate::Result<()> {
+        (**self).write_i32(i).await
     }
 
-    fn write_i64(&mut self, i: i64) -> crate::Result<()> {
-        (**self).write_i64(i)
+    async fn write_i64(&mut self, i: i64) -> crate::Result<()> {
+        (**self).write_i64(i).await
     }
 
-    fn write_double(&mut self, d: f64) -> crate::Result<()> {
-        (**self).write_double(d)
+    async fn write_double(&mut self, d: f64) -> crate::Result<()> {
+        (**self).write_double(d).await
     }
 
-    fn write_string(&mut self, s: &str) -> crate::Result<()> {
-        (**self).write_string(s)
+    async fn write_string(&mut self, s: &str) -> crate::Result<()> {
+        (**self).write_string(s).await
     }
 
-    fn write_list_begin(&mut self, identifier: &TListIdentifier) -> crate::Result<()> {
-        (**self).write_list_begin(identifier)
+    async fn write_list_begin(&mut self, identifier: &TListIdentifier) -> crate::Result<()> {
+        (**self).write_list_begin(identifier).await
     }
 
-    fn write_list_end(&mut self) -> crate::Result<()> {
-        (**self).write_list_end()
+    async fn write_list_end(&mut self) -> crate::Result<()> {
+        (**self).write_list_end().await
     }
 
-    fn write_set_begin(&mut self, identifier: &TSetIdentifier) -> crate::Result<()> {
-        (**self).write_set_begin(identifier)
+    async fn write_set_begin(&mut self, identifier: &TSetIdentifier) -> crate::Result<()> {
+        (**self).write_set_begin(identifier).await
     }
 
-    fn write_set_end(&mut self) -> crate::Result<()> {
-        (**self).write_set_end()
+    async fn write_set_end(&mut self) -> crate::Result<()> {
+        (**self).write_set_end().await
     }
 
-    fn write_map_begin(&mut self, identifier: &TMapIdentifier) -> crate::Result<()> {
-        (**self).write_map_begin(identifier)
+    async fn write_map_begin(&mut self, identifier: &TMapIdentifier) -> crate::Result<()> {
+        (**self).write_map_begin(identifier).await
     }
 
-    fn write_map_end(&mut self) -> crate::Result<()> {
-        (**self).write_map_end()
+    async fn write_map_end(&mut self) -> crate::Result<()> {
+        (**self).write_map_end().await
     }
 
-    fn flush(&mut self) -> crate::Result<()> {
-        (**self).flush()
+    async fn flush(&mut self) -> crate::Result<()> {
+        (**self).flush().await
     }
 
-    fn write_byte(&mut self, b: u8) -> crate::Result<()> {
-        (**self).write_byte(b)
+    async fn write_byte(&mut self, b: u8) -> crate::Result<()> {
+        (**self).write_byte(b).await
     }
 }
 
@@ -544,19 +578,19 @@ where
 /// let factory = TBinaryInputProtocolFactory::new();
 /// let protocol = factory.create(Box::new(channel));
 /// ```
-pub trait TInputProtocolFactory {
-    // Create a `TInputProtocol` that reads bytes from `transport`.
-    fn create(&self, transport: Box<dyn TReadTransport + Send>) -> Box<dyn TInputProtocol + Send>;
-}
+// pub trait TInputProtocolFactory {
+//     // Create a `TInputProtocol` that reads bytes from `transport`.
+//     fn create(&self, transport: Box<dyn TReadTransport + Send>) -> Box<dyn TInputProtocol + Send>;
+// }
 
-impl<T> TInputProtocolFactory for Box<T>
-where
-    T: TInputProtocolFactory + ?Sized,
-{
-    fn create(&self, transport: Box<dyn TReadTransport + Send>) -> Box<dyn TInputProtocol + Send> {
-        (**self).create(transport)
-    }
-}
+// impl<T> TInputProtocolFactory for Box<T>
+// where
+//     T: TInputProtocolFactory + ?Sized,
+// {
+//     fn create(&self, transport: Box<dyn TReadTransport + Send>) -> Box<dyn TInputProtocol + Send> {
+//         (**self).create(transport)
+//     }
+// }
 
 /// Helper type used by servers to create `TOutputProtocol` instances for
 /// accepted client connections.
@@ -575,19 +609,19 @@ where
 /// let factory = TBinaryOutputProtocolFactory::new();
 /// let protocol = factory.create(Box::new(channel));
 /// ```
-pub trait TOutputProtocolFactory {
-    /// Create a `TOutputProtocol` that writes bytes to `transport`.
-    fn create(&self, transport: Box<dyn TWriteTransport + Send>) -> Box<dyn TOutputProtocol + Send>;
-}
+// pub trait TOutputProtocolFactory {
+//     /// Create a `TOutputProtocol` that writes bytes to `transport`.
+//     fn create(&self, transport: Box<dyn TWriteTransport + Send>) -> Box<dyn TOutputProtocol + Send>;
+// }
 
-impl<T> TOutputProtocolFactory for Box<T>
-where
-    T: TOutputProtocolFactory + ?Sized,
-{
-    fn create(&self, transport: Box<dyn TWriteTransport + Send>) -> Box<dyn TOutputProtocol + Send> {
-        (**self).create(transport)
-    }
-}
+// impl<T> TOutputProtocolFactory for Box<T>
+// where
+//     T: TOutputProtocolFactory + ?Sized,
+// {
+//     fn create(&self, transport: Box<dyn TWriteTransport + Send>) -> Box<dyn TOutputProtocol + Send> {
+//         (**self).create(transport)
+//     }
+// }
 
 /// Thrift message identifier.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -916,53 +950,53 @@ pub fn field_id(field_ident: &TFieldIdentifier) -> crate::Result<i16> {
     })
 }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use std::io::Cursor;
+//     use std::io::Cursor;
 
-    use super::*;
-    use crate::transport::{TReadTransport, TWriteTransport};
+//     use super::*;
+//     use crate::transport::{TReadTransport, TWriteTransport};
 
-    #[test]
-    fn must_create_usable_input_protocol_from_concrete_input_protocol() {
-        let r: Box<dyn TReadTransport> = Box::new(Cursor::new([0, 1, 2]));
-        let mut t = TCompactInputProtocol::new(r);
-        takes_input_protocol(&mut t)
-    }
+//     #[test]
+//     fn must_create_usable_input_protocol_from_concrete_input_protocol() {
+//         let r: Box<dyn TReadTransport> = Box::new(Cursor::new([0, 1, 2]));
+//         let mut t = TCompactInputProtocol::new(r);
+//         takes_input_protocol(&mut t)
+//     }
 
-    #[test]
-    fn must_create_usable_input_protocol_from_boxed_input() {
-        let r: Box<dyn TReadTransport> = Box::new(Cursor::new([0, 1, 2]));
-        let mut t: Box<dyn TInputProtocol> = Box::new(TCompactInputProtocol::new(r));
-        takes_input_protocol(&mut t)
-    }
+//     #[test]
+//     fn must_create_usable_input_protocol_from_boxed_input() {
+//         let r: Box<dyn TReadTransport> = Box::new(Cursor::new([0, 1, 2]));
+//         let mut t: Box<dyn TInputProtocol> = Box::new(TCompactInputProtocol::new(r));
+//         takes_input_protocol(&mut t)
+//     }
 
-    #[test]
-    fn must_create_usable_output_protocol_from_concrete_output_protocol() {
-        let w: Box<dyn TWriteTransport> = Box::new(vec![0u8; 10]);
-        let mut t = TCompactOutputProtocol::new(w);
-        takes_output_protocol(&mut t)
-    }
+//     #[test]
+//     fn must_create_usable_output_protocol_from_concrete_output_protocol() {
+//         let w: Box<dyn TWriteTransport> = Box::new(vec![0u8; 10]);
+//         let mut t = TCompactOutputProtocol::new(w);
+//         takes_output_protocol(&mut t)
+//     }
 
-    #[test]
-    fn must_create_usable_output_protocol_from_boxed_output() {
-        let w: Box<dyn TWriteTransport> = Box::new(vec![0u8; 10]);
-        let mut t: Box<dyn TOutputProtocol> = Box::new(TCompactOutputProtocol::new(w));
-        takes_output_protocol(&mut t)
-    }
+//     #[test]
+//     fn must_create_usable_output_protocol_from_boxed_output() {
+//         let w: Box<dyn TWriteTransport> = Box::new(vec![0u8; 10]);
+//         let mut t: Box<dyn TOutputProtocol> = Box::new(TCompactOutputProtocol::new(w));
+//         takes_output_protocol(&mut t)
+//     }
 
-    fn takes_input_protocol<R>(t: &mut R)
-    where
-        R: TInputProtocol,
-    {
-        t.read_byte().unwrap();
-    }
+//     fn takes_input_protocol<R>(t: &mut R)
+//     where
+//         R: TInputProtocol,
+//     {
+//         t.read_byte().unwrap();
+//     }
 
-    fn takes_output_protocol<W>(t: &mut W)
-    where
-        W: TOutputProtocol,
-    {
-        t.flush().unwrap();
-    }
-}
+//     fn takes_output_protocol<W>(t: &mut W)
+//     where
+//         W: TOutputProtocol,
+//     {
+//         t.flush().unwrap();
+//     }
+// }

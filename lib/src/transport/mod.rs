@@ -27,6 +27,8 @@ use std::io;
 use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut};
 
+use async_trait::async_trait;
+
 #[cfg(test)]
 macro_rules! assert_eq_transport_num_written_bytes {
     ($transport:ident, $num_written_bytes:expr) => {{

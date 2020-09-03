@@ -19,7 +19,7 @@ use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::Arc;
 use threadpool::ThreadPool;
 
-use crate::protocol::{TInputProtocol, TInputProtocolFactory, TOutputProtocol, TOutputProtocolFactory};
+use crate::protocol::{TAsyncInputProtocol, /* TInputProtocolFactory,*/ TAsyncOutputProtocol, /*TOutputProtocolFactory*/};
 use crate::transport::{TIoChannel, TReadTransportFactory, TTcpChannel, TWriteTransportFactory};
 use crate::{ApplicationError, ApplicationErrorKind};
 
@@ -194,7 +194,7 @@ where
     fn new_protocols_for_connection(
         &mut self,
         stream: TcpStream,
-    ) -> crate::Result<(Box<dyn TInputProtocol + Send>, Box<dyn TOutputProtocol + Send>)> {
+    ) -> crate::Result<(Box<dyn TAsyncInputProtocol + Send>, Box<dyn TAsyncOutputProtocol + Send>)> {
         // create the shared tcp stream
         let channel = TTcpChannel::with_stream(stream);
 
@@ -216,8 +216,8 @@ where
 
 fn handle_incoming_connection<PRC>(
     processor: Arc<PRC>,
-    i_prot: Box<dyn TInputProtocol>,
-    o_prot: Box<dyn TOutputProtocol>,
+    i_prot: Box<dyn TAsyncInputProtocol>,
+    o_prot: Box<dyn TAsyncOutputProtocol>,
 ) where
     PRC: TProcessor,
 {
