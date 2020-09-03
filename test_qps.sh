@@ -1,17 +1,17 @@
 #!/bin/bash
 
 OPTION=0
-# HOST="10.108.21.58"
-HOST="127.0.0.1"
+HOST="10.108.21.58"
+#HOST="127.0.0.1"
 PORT=11235
-THREAD_NUM=100
-ITER_NUM=100
-REQ_NUM_ARRAY=(1 10 100 500 1000 1500 2000)
+ITER_NUM=1
+REQ_NUM=5000
+THREAD_NUM_ARRAY=(32) #(32 128 256 512 1024)
 
-for req_num in ${REQ_NUM_ARRAY[@]}
+for thread_num in ${THREAD_NUM_ARRAY[@]}
 do
-    ./client --host $HOST --port $PORT --option $OPTION --thread $THREAD_NUM \
-        --reqnum $req_num --iter $ITER_NUM
+    ./client --host $HOST --port $PORT --option $OPTION --thread $thread_num \
+        --reqnum $REQ_NUM --iter $ITER_NUM
 done
 
 

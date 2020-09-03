@@ -1,6 +1,6 @@
 #!/bin/bash
 
-OPTION=1    # For Latency
+OPTION=2    # For Latency
 HOST="10.108.21.58"
 #HOST="127.0.0.1"
 PORT=11235

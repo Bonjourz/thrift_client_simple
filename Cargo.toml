@@ -47,3 +47,4 @@ tokio = { version = "0.2.22", features = ["macros", "tcp"] }
 async-trait = "0.1.38"
 rsa = "0.3.0"
 rand = "0.7.3"
+core_affinity = "0.5.10"
