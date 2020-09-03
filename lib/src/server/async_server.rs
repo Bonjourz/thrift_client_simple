@@ -119,7 +119,7 @@ async fn worker_func<PRC>(
 			}
 		};
 			
-        println!("message received!");
+        //println!("message received!");
 
         {
             let processor = Arc::clone(&processor);
@@ -135,7 +135,7 @@ async fn worker_func<PRC>(
                     match processor.
                         process(&mut i_prot, 
                         &mut o_prot).await {
-                        Ok(_ok) => { println!("[gbd] async_server arrive here 1"); },
+                        Ok(_ok) => { /* println!("[gbd] async_server arrive here 1"); */ },
                         Err(_e) => {
                             match _e {
                                 crate::Error::Transport(ref transport_err)

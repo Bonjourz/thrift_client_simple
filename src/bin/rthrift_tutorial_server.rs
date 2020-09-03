@@ -115,6 +115,7 @@ impl SharedServiceSyncHandler for SharedServiceServer {
     }
 
     async fn handle_send_empty(&self) -> thrift::Result<()> {
+        //println!("[gbd] receive message");
         Ok(())
     }
 }
