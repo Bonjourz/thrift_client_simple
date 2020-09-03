@@ -41,9 +41,11 @@ use std::path::Path;
 use std::fs::File;
 use std::io::prelude::*;
 
+use std::collections::VecDeque;
+
 extern crate core_affinity;
 
-const SERVER_ADDR : &'static str = "10.108.21.58";
+const SERVER_ADDR : &'static str = "127.0.0.1";
 const PORT : u16 = 11235;
 
 fn get_duration(start_time : SystemTime, end_time: SystemTime) -> Duration {
@@ -212,51 +214,72 @@ fn run_latency_test(thread_num: u64, req_per_conn: u64,
 
     /* Write the Average Time */
     file.write_all(format!("average time: {}", 
-        total_time as f64 / (req_per_conn * thread_num) as f64).as_bytes())?;
+       total_time as f64 / (req_per_conn * thread_num) as f64).as_bytes())?;
     println!("[gbd] arrive here after open a file");
 
     Ok(())
 }
 
-fn test_qps(loop_num: u64, req_per_conn: u64, t_idx : u64) -> thrift::Result<()> {
-    let mut time_in_ns : u64 = 0;
-	
-	// println!("after spawn thread: {}", t_idx);
-	//let time_begin = SystemTime::now();
-	let mut latency_total = 0;
-    for _i in 0..loop_num {
-        let mut client = new_client(SERVER_ADDR, PORT)?;
-        // let target_val = 3;
+type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
+type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
 
-        for _i in 0..req_per_conn {
-			let time_begin = SystemTime::now();
-            client.send_empty()?; 
-			let time_end = SystemTime::now();
-			latency_total += get_duration_in_ns(time_begin, time_end); 
-			/* 
-            match client.add(arg1, arg2) {
-				Ok(_val) => {/*assert_eq!(_val, target_val)*/},
-				Err(_e) => { println!("error"); }
-			};
-		*/
+fn test_qps(vec_queue: Arc<Mutex<VecDeque<SharedServiceSyncClient<ClientInputProtocol, ClientOutputProtocol>>>>,
+        total_num: Arc<Mutex<u64>>, target_num: &u64) -> thrift::Result<()> {
+    /* First create the connections */
+    let mut my_client;
+    let print_num = target_num / 10;
+    loop {
+        loop {
+            if *total_num.lock().unwrap() >= *target_num {
+                return Ok(());
+            }
+
+            match vec_queue.lock().unwrap().pop_front() {
+                Some(_client) => {
+                    my_client = _client;
+                    break;
+                },
+                None => {}, 
+            }; 
+            //println!("capacity: {}", vec_queue.lock().unwrap().capacity());
+        }
+        my_client.send_empty()?;
+        vec_queue.lock().unwrap().push_back(my_client);
+
+        let mut lock_arg = total_num.lock().unwrap();
+        if *lock_arg >= *target_num {
+            return Ok(());
+        } else {
+            if *lock_arg % print_num == 0 {
+                println!("arrie here: {}", *lock_arg);
+            }
+            *lock_arg += 1;
         }
     }
-	//let time_end = SystemTime::now();
-    //println!("latency in ms: {} thread_idx: {}", 
-			//get_duration_in_ms(time_begin, time_end), t_idx);
-	//println!("latency average: {} ms", (latency_total as f64 / 1000_000 as f64) / (loop_num as f64 * req_per_conn as f64));
+
 	Ok(())
 }
 
- fn run_qps_test(loop_num: u64, thread_num: u64, 
-        req_per_conn: u64) -> thrift::Result<()> {
+ fn run_qps_test(thread_num: u64, target_num: u64, conn_num: u64) -> thrift::Result<()> {
     let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
+    let connect_vec = Arc::new(Mutex::new(VecDeque::new()));
     
+    for _i in 0..conn_num {
+        let client = new_client(SERVER_ADDR, PORT)?;
+        connect_vec.lock().unwrap().push_back(client);
+    }
+
     let time_begin = SystemTime::now();
+    let target_num : u64 = target_num;
+    let initial_total = Arc::new(Mutex::new(0));
+
+    println!("[thread] before create thread");
     for _i in 0..thread_num {
+        let connect_vec = connect_vec.clone();
+        let initial_total = initial_total.clone();
         let handler = thread::spawn(move || {
             // thread code
-            match test_qps(loop_num, req_per_conn, _i) {
+            match test_qps(connect_vec, initial_total, &target_num) {
                 Ok(_) => { },
                 Err(_) => { println!("[gbd] Call client error here"); },
             };
@@ -273,7 +296,7 @@ fn test_qps(loop_num: u64, req_per_conn: u64, t_idx : u64) -> thrift::Result<()>
     let time_end = SystemTime::now();
     let time_in_ms = get_duration_in_ms(time_begin, time_end);
 	println!("{:?}\n{:?}\n{}", time_begin, time_end, time_in_ms);
-    println!("{} Req/s", (thread_num * loop_num * req_per_conn) as f64 / (time_in_ms as f64 / 1000 as f64));
+    println!("{} Req/s", (target_num) as f64 / (time_in_ms as f64 / 1000 as f64));
     Ok(())
 }
 
@@ -294,22 +317,23 @@ fn main() {
 
      // get any passed-in args or the defaults
     let host = matches.value_of("host").unwrap_or("127.0.0.1");
-    let port = value_t!(matches, "port", u16).unwrap_or(9090);
+    let port = value_t!(matches, "port", u16).unwrap_or(11235);
     let loop_num = value_t!(matches, "iter", u64).unwrap_or(5000);
     let thread_num = value_t!(matches, "thread", u64).unwrap_or(12);
     let req_per_conn = value_t!(matches, "reqnum", u64).unwrap_or(5000);
     let buf_size_in_kb = value_t!(matches, "bufsize", u64).unwrap_or(1);
     let option = value_t!(matches, "option", u64).unwrap_or(0);
 
-    println!("Client configuration: IP: {}:{}, iter: {} thread_num: {} req_per_conn {} buf_size per req {} kB",
-                host, port, loop_num, thread_num, req_per_conn, buf_size_in_kb);
+    println!("Client configuration: IP: {}:{}, iter: {} thread_num: {} req_per_conn {} buf_size per req {} kB option: {}",
+                SERVER_ADDR, PORT, loop_num, thread_num, req_per_conn, buf_size_in_kb,
+                option);
     
     let host_arc = Arc::new(host.to_string());  
     let buf_size = buf_size_in_kb * 1024;
     match option {
         /* Run qps test */
         0 => {
-            match run_qps_test(loop_num, thread_num, req_per_conn) {
+            match run_qps_test(thread_num, 100000, 10) {
                 Ok(_ok) => {},
                 Err(_err) => { println!("run_qps_test err: {:?}", _err); },
             };
@@ -341,9 +365,6 @@ fn main() {
 
 // type ClientInputProtocol = TBinaryInputProtocol<TFramedReadTransport<ReadHalf<TTcpChannel>>>;
 // type ClientOutputProtocol = TBinaryOutputProtocol<TFramedWriteTransport<WriteHalf<TTcpChannel>>>;
-
-type ClientInputProtocol = TBinaryInputProtocol<TBufferedReadTransport<ReadHalf<TTcpChannel>>>;
-type ClientOutputProtocol = TBinaryOutputProtocol<TBufferedWriteTransport<WriteHalf<TTcpChannel>>>;
 
 
 fn new_client
