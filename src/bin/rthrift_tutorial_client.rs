@@ -211,12 +211,10 @@ fn run_latency_test(addr: Arc<String>, port: u16, thread_num: u64, req_per_conn:
     Ok(())
 }
 
-fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> thrift::Result<u64> {
+fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> thrift::Result<()> {
     let mut time_in_ns : u64 = 0;
 
     for _i in 0..loop_num {
-        let time_begin = SystemTime::now();
-
         let mut client = new_client(addr.as_ref(), *port)?;
         // let target_val = 3;
 
@@ -228,31 +226,22 @@ fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> 
 				Err(_e) => { println!("error"); }
 			};
         }
-
-        let time_end = SystemTime::now();
-        time_in_ns += get_duration_in_ns(time_begin, time_end);
     }
-    
-
-    let qps = (loop_num * req_per_conn) as f64 / 
-        (time_in_ns as f64 / 1_000_000_000 as f64);
-    Ok(qps as u64)
+    Ok(())
 }
 
  fn run_qps_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: u64, 
         req_per_conn: u64) -> thrift::Result<()> {
-    
-    let qps_total : Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
-
     let mut handler_vec: Vec<JoinHandle<()>> = Vec::new();
+    
+    let time_begin = SystemTime::now();
     for _i in 0..thread_num {
         let addr = addr.clone();
 
-        let qps_total = qps_total.clone();
         let handler = thread::spawn(move || {
             // thread code
             match test_qps(addr, &port, loop_num, req_per_conn) {
-                Ok(_qps) => { *qps_total.lock().unwrap() += _qps; },
+                Ok(_) => { },
                 Err(_) => { println!("[gbd] Call client error here"); },
             };
 
@@ -265,8 +254,10 @@ fn test_qps(addr: Arc<String>, port: &u16, loop_num: u64, req_per_conn: u64) -> 
     for handler in handler_vec {
         handler.join().unwrap();
     }
+    let time_end = SystemTime::now();
+    let time_in_ms = get_duration_in_ms(time_begin, time_end);
 
-    println!("{} Req/s", *qps_total.lock().unwrap() / thread_num);
+    println!("{} Req/s", thread_num * loop_num * req_per_conn / (time_in_ms / 1000));
     Ok(())
 }
 
