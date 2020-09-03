@@ -94,7 +94,7 @@ mod multiplexed;
 mod stored;
 
 pub use self::binary::{
-    TBinaryInputProtocol, /*TBinaryInputProtocolFactory,*/ TAsyncBinaryOutputProtocol,
+    TAsyncBinaryInputProtocol, /*TBinaryInputProtocolFactory,*/ TAsyncBinaryOutputProtocol,
     /*TBinaryOutputProtocolFactory,*/
 };
 // pub use self::compact::{
@@ -139,7 +139,7 @@ const MAXIMUM_SKIP_DEPTH: i8 = 64;
 /// let field_end = protocol.read_field_end().unwrap();
 /// ```
 #[async_trait]
-pub trait TAsyncInputProtocol {
+pub trait TAsyncInputProtocol: Send {
     /// Read the beginning of a Thrift message.
     async fn read_message_begin(&mut self) -> crate::Result<TMessageIdentifier>;
     /// Read the end of a Thrift message.
@@ -165,7 +165,7 @@ pub trait TAsyncInputProtocol {
     /// Read a 64-bit signed integer.
     async fn read_i64(&mut self) -> crate::Result<i64>;
     /// Read a 64-bit float.
-    async fn read_double(&mut self) -> crate::Result<f64>;
+    // async fn read_double(&mut self) -> crate::Result<f64>;
     /// Read a fixed-length string (not null terminated).
     async fn read_string(&mut self) -> crate::Result<String>;
     /// Read the beginning of a list.
@@ -220,10 +220,10 @@ pub trait TAsyncInputProtocol {
                 has_get.map(|_| ())
             },
 
-            TType::Double => {
-                let has_get = self.read_double().await;
-                has_get.map(|_| ())
-            },
+            // TType::Double => {
+            //     let has_get = self.read_double().await;
+            //     has_get.map(|_| ())
+            // },
 
             TType::String => {
                 let has_get = self.read_string().await;
@@ -317,7 +317,7 @@ pub trait TAsyncInputProtocol {
 /// protocol.write_field_end().unwrap();
 /// ```
 #[async_trait]
-pub trait TAsyncOutputProtocol {
+pub trait TAsyncOutputProtocol: Send {
     /// Write the beginning of a Thrift message.
     async fn write_message_begin(&mut self, identifier: &TMessageIdentifier) -> crate::Result<()>;
     /// Write the end of a Thrift message.
@@ -346,7 +346,7 @@ pub trait TAsyncOutputProtocol {
     /// Write a 64-bit signed integer.
     async fn write_i64(&mut self, i: i64) -> crate::Result<()>;
     /// Write a 64-bit float.
-    async fn write_double(&mut self, d: f64) -> crate::Result<()>;
+    // async fn write_double(&mut self, d: f64) -> crate::Result<()>;
     /// Write a fixed-length string.
     async fn write_string(&mut self, s: &str) -> crate::Result<()>;
     /// Write the beginning of a list.
@@ -426,9 +426,9 @@ where
         (**self).read_i64().await
     }
 
-    async fn read_double(&mut self) -> crate::Result<f64> {
-        (**self).read_double().await
-    }
+    // async fn read_double(&mut self) -> crate::Result<f64> {
+    //     (**self).read_double().await
+    // }
 
     async fn read_string(&mut self) -> crate::Result<String> {
         (**self).read_string().await
@@ -520,9 +520,9 @@ where
         (**self).write_i64(i).await
     }
 
-    async fn write_double(&mut self, d: f64) -> crate::Result<()> {
-        (**self).write_double(d).await
-    }
+    // async fn write_double(&mut self, d: f64) -> crate::Result<()> {
+    //     (**self).write_double(d).await
+    // }
 
     async fn write_string(&mut self, s: &str) -> crate::Result<()> {
         (**self).write_string(s).await

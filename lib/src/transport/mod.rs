@@ -26,8 +26,7 @@
 use std::io;
 use std::io::{Read, Write};
 use std::ops::{Deref, DerefMut};
-
-use async_trait::async_trait;
+//use std::pin::Pin;
 
 #[cfg(test)]
 macro_rules! assert_eq_transport_num_written_bytes {
@@ -42,6 +41,76 @@ macro_rules! assert_eq_transport_written_bytes {
         assert_eq!($transport.channel.write_bytes(), &$expected_bytes);
     }};
 }
+
+
+/* Async part start  */
+use tokio::io::{AsyncRead, AsyncWrite};
+mod async_buffered;
+mod async_simple;
+mod async_mod;
+
+pub use self::async_mod::{
+	AsyncReadExt,
+	ReadExact,
+	ReadI32,
+	read_exact,
+};
+
+pub trait TAsyncReadTransport: AsyncRead {}
+pub trait TAsyncWriteTransport: AsyncWrite {}
+
+impl<T> TAsyncReadTransport for T where T: AsyncRead {}
+impl<T> TAsyncWriteTransport for T where T: AsyncWrite {}
+
+//pub trait TAsyncReadTransport: Read {}
+//pub trait TAsyncWriteTransport: Write {}
+//
+//impl<T> TAsyncReadTransport for T where T: Read {}
+//impl<T> TAsyncWriteTransport for T where T: Write {}
+
+pub use self::async_buffered::{
+    TAsyncBufferedReadTransport, TAsyncBufferedReadTransportFactory,
+		TAsyncBufferedWriteTransport, TAsyncBufferedWriteTransportFactory,
+};
+
+pub use self::async_simple::{
+    TAsyncSimpleReadTransport, TAsyncSimpleReadTransportFactory,
+		TAsyncSimpleWriteTransport, TAsyncSimpleWriteTransportFactory,
+};
+
+pub trait TAsyncReadTransportFactory {
+    //fn create(&self, channel: dyn AsyncRead + Send) -> Box<dyn TAsyncReadTransport + Send>;
+    //fn create(&self, channel: &mut (dyn AsyncRead + Send + Unpin + Sync)) -> Box<dyn TAsyncReadTransport + Send + '_>;
+    fn create(&self, channel: Box<dyn AsyncRead + Send + Unpin>) -> Box<dyn TAsyncReadTransport + Send + Unpin>;
+}
+
+pub trait TAsyncWriteTransportFactory {
+    //fn create(&self, channel: dyn AsyncWrite + Send) -> Box<dyn TAsyncWriteTransport + Send>;
+    //fn create(&self, channel: &mut (dyn AsyncWrite + Send + Unpin + Sync)) -> Box<dyn TAsyncWriteTransport + Send>;
+    fn create(&self, channel: Box<dyn AsyncWrite + Send + Unpin>) -> Box<dyn TAsyncWriteTransport + Send + Unpin>;
+}
+
+//impl<T> TAsyncReadTransportFactory for Box<T>
+//where
+//    T: TAsyncReadTransportFactory + ?Sized,
+//{
+//    fn create(&self, channel: Pin<Box<dyn AsyncRead + Send>>) -> Pin<Box<dyn TAsyncReadTransport + Send>> {
+//        (**self).create(channel)
+//    }
+//}
+//
+//impl<T> TAsyncWriteTransportFactory for Box<T>
+//where
+//    T: TAsyncWriteTransportFactory + ?Sized,
+//{
+//    fn create(&self, channel: Pin<Box<dyn AsyncWrite + Send>>) -> Pin<Box<dyn TAsyncWriteTransport + Send>> {
+//        (**self).create(channel)
+//    }
+//}
+
+/* Async part end  */
+
+
 
 mod buffered;
 mod framed;
@@ -58,6 +127,7 @@ pub use self::framed::{
 };
 pub use self::mem::TBufferChannel;
 pub use self::socket::TTcpChannel;
+
 
 /// Identifies a transport used by a `TInputProtocol` to receive bytes.
 pub trait TReadTransport: Read {}

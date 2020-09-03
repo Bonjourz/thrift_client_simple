@@ -23,10 +23,13 @@ use super::{
     TMessageIdentifier, TMessageType,
 };
 use super::{TAsyncOutputProtocol, /* TAsyncOutputProtocolFactory, */ TSetIdentifier, TStructIdentifier, TType};
-use crate::transport::{TReadTransport, TWriteTransport};
+use crate::transport::{TAsyncReadTransport, TAsyncWriteTransport};
 use crate::{ProtocolError, ProtocolErrorKind};
 
 use async_trait::async_trait;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use bytes::Buf;
+use std::io::Cursor;
 
 const BINARY_PROTOCOL_VERSION_1: u32 = 0x80010000;
 
@@ -53,24 +56,24 @@ const BINARY_PROTOCOL_VERSION_1: u32 = 0x80010000;
 /// let recvd_string = protocol.read_string().unwrap();
 /// ```
 #[derive(Debug)]
-pub struct TBinaryInputProtocol<T>
+pub struct TAsyncBinaryInputProtocol<T>
 where
-    T: TReadTransport,
+    T: TAsyncReadTransport,
 {
     strict: bool,
     pub transport: T, // FIXME: shouldn't be public
 }
 
-impl<'a, T> TBinaryInputProtocol<T>
+impl<'a, T> TAsyncBinaryInputProtocol<T>
 where
-    T: TReadTransport,
+    T: TAsyncReadTransport,
 {
     /// Create a `TBinaryInputProtocol` that reads bytes from `transport`.
     ///
     /// Set `strict` to `true` if all incoming messages contain the protocol
     /// version number in the protocol header.
-    pub fn new(transport: T, strict: bool) -> TBinaryInputProtocol<T> {
-        TBinaryInputProtocol {
+    pub fn new(transport: T, strict: bool) -> TAsyncBinaryInputProtocol<T> {
+        TAsyncBinaryInputProtocol {
             strict: strict,
             transport: transport,
         }
@@ -80,7 +83,7 @@ where
 #[async_trait]
 impl<T> TAsyncInputProtocol for TAsyncBinaryInputProtocol<T>
 where
-    T: TReadTransport + Send,
+    T: TAsyncReadTransport + Send + Unpin,
 {
     #[cfg_attr(feature = "cargo-clippy", allow(collapsible_if))]
     async fn read_message_begin(&mut self) -> crate::Result<TMessageIdentifier> {
@@ -94,6 +97,7 @@ where
             // apparently we got a protocol-version header - check
             // it, and if it matches, read the rest of the fields
             if first_bytes[0..2] != [0x80, 0x01] {
+                println!("[gbd] read_message_begin error 1");
                 Err(crate::Error::Protocol(ProtocolError {
                     kind: ProtocolErrorKind::BadVersion,
                     message: format!("received bad version: {:?}", &first_bytes[0..2]),
@@ -108,6 +112,7 @@ where
             // apparently we didn't get a protocol-version header,
             // which happens if the sender is not using the strict protocol
             if self.strict {
+                println!("[gbd] read_message_begin error 2");
                 // we're in strict mode however, and that always
                 // requires the protocol-version header to be written first
                 Err(crate::Error::Protocol(ProtocolError {
@@ -162,12 +167,12 @@ where
     }
 
     async fn read_bytes(&mut self) -> crate::Result<Vec<u8>> {
-        let num_bytes = self.transport.read_i32::<BigEndian>()? as usize;
+        let num_bytes = self.transport.read_i32().await? as usize;
         let mut buf = vec![0u8; num_bytes];
-        self.transport
-            .read_exact(&mut buf)
-            .map(|_| buf)
-            .map_err(From::from)
+        let result = self.transport
+            .read_exact(&mut buf).await;
+        result.map(|_| buf)
+              .map_err(From::from)
     }
 
     async fn read_bool(&mut self) -> crate::Result<bool> {
@@ -179,24 +184,36 @@ where
     }
 
     async fn read_i8(&mut self) -> crate::Result<i8> {
-        self.transport.read_i8().map_err(From::from)
+        let result = self.transport.read_i8().await;
+        result.map_err(From::from)
     }
 
     async fn read_i16(&mut self) -> crate::Result<i16> {
-        self.transport.read_i16::<BigEndian>().map_err(From::from)
+        let result = self.transport.read_i16().await;
+        result.map_err(From::from)
     }
 
     async fn read_i32(&mut self) -> crate::Result<i32> {
-        self.transport.read_i32::<BigEndian>().map_err(From::from)
+        let result = self.transport.read_i32().await;
+        result.map_err(From::from)
     }
 
     async fn read_i64(&mut self) -> crate::Result<i64> {
-        self.transport.read_i64::<BigEndian>().map_err(From::from)
+        let result = self.transport.read_i64().await;
+        result.map_err(From::from)
     }
 
-    async fn read_double(&mut self) -> crate::Result<f64> {
-        self.transport.read_f64::<BigEndian>().map_err(From::from)
-    }
+    // async fn read_double(&mut self) -> crate::Result<f64> {
+        //let result = self.transport.read_u64().await;
+        //let buf : [u8 ; 4] = result.as_bytes();
+        // let mut buf: [u8; 4] = [0; 4];
+        // self.transport.read_exact(&mut buf).await.map_err(From::from);
+        // let mut buf = Cursor::new(buf);
+        // let result = buf.get_f64_be();
+        // result
+
+        //result.map_err(From::from) as f64
+    // }
 
     async fn read_string(&mut self) -> crate::Result<String> {
         let bytes = self.read_bytes().await?;
@@ -246,7 +263,8 @@ where
     //
 
     async fn read_byte(&mut self) -> crate::Result<u8> {
-        self.transport.read_u8().map_err(From::from)
+        let result = self.transport.read_u8().await;
+        result.map_err(From::from)
     }
 }
 
@@ -292,7 +310,7 @@ where
 #[derive(Debug)]
 pub struct TAsyncBinaryOutputProtocol<T>
 where
-    T: TWriteTransport,
+    T: TAsyncWriteTransport,
 {
     strict: bool,
     pub transport: T, // FIXME: do not make public; only public for testing!
@@ -300,7 +318,7 @@ where
 
 impl<T> TAsyncBinaryOutputProtocol<T>
 where
-    T: TWriteTransport,
+    T: TAsyncWriteTransport,
 {
     /// Create a `TBinaryOutputProtocol` that writes bytes to `transport`.
     ///
@@ -317,13 +335,13 @@ where
 #[async_trait]
 impl<T> TAsyncOutputProtocol for TAsyncBinaryOutputProtocol<T>
 where
-    T: TWriteTransport + Send,
+    T: TAsyncWriteTransport + Send + Unpin,
 {
     async fn write_message_begin(&mut self, identifier: &TMessageIdentifier) -> crate::Result<()> {
         if self.strict {
             let message_type: u8 = identifier.message_type.into();
             let header = BINARY_PROTOCOL_VERSION_1 | (message_type as u32);
-            self.transport.write_u32::<BigEndian>(header)?;
+            self.transport.write_u32(header).await?;
             self.write_string(&identifier.name).await?;
             self.write_i32(identifier.sequence_number).await
         } else {
@@ -374,7 +392,8 @@ where
 
     async fn write_bytes(&mut self, b: &[u8]) -> crate::Result<()> {
         self.write_i32(b.len() as i32).await?;
-        self.transport.write_all(b).map_err(From::from)
+        let result = self.transport.write_all(b).await;
+        result.map_err(From::from)
     }
 
     async fn write_bool(&mut self, b: bool) -> crate::Result<()> {
@@ -386,24 +405,29 @@ where
     }
 
     async fn write_i8(&mut self, i: i8) -> crate::Result<()> {
-        self.transport.write_i8(i).map_err(From::from)
+        let result = self.transport.write_i8(i).await;
+        result.map_err(From::from)
     }
 
     async fn write_i16(&mut self, i: i16) -> crate::Result<()> {
-        self.transport.write_i16::<BigEndian>(i).map_err(From::from)
+        let result = self.transport.write_i16(i).await;
+        result.map_err(From::from)
     }
 
     async fn write_i32(&mut self, i: i32) -> crate::Result<()> {
-        self.transport.write_i32::<BigEndian>(i).map_err(From::from)
+        let result = self.transport.write_i32(i).await;
+        result.map_err(From::from)
     }
 
     async fn write_i64(&mut self, i: i64) -> crate::Result<()> {
-        self.transport.write_i64::<BigEndian>(i).map_err(From::from)
+        let result = self.transport.write_i64(i).await;
+        result.map_err(From::from)
     }
 
-    async fn write_double(&mut self, d: f64) -> crate::Result<()> {
-        self.transport.write_f64::<BigEndian>(d).map_err(From::from)
-    }
+    // async fn write_double(&mut self, d: f64) -> crate::Result<()> {
+    //     let result = self.transport.write_f64(d).await;
+    //     result.map_err(From::from)
+    // }
 
     async fn write_string(&mut self, s: &str) -> crate::Result<()> {
         self.write_bytes(s.as_bytes()).await
@@ -444,14 +468,16 @@ where
     }
 
     async fn flush(&mut self) -> crate::Result<()> {
-        self.transport.flush().map_err(From::from)
+        let result = self.transport.flush().await;
+        result.map_err(From::from)
     }
 
     // utility
     //
 
     async fn write_byte(&mut self, b: u8) -> crate::Result<()> {
-        self.transport.write_u8(b).map_err(From::from)
+        let result = self.transport.write_u8(b).await;
+        result.map_err(From::from)
     }
 }
 

@@ -17,16 +17,63 @@
 
 //! Types used to implement a Thrift server.
 
-use crate::protocol::{TAsyncInputProtocol, TMessageIdentifier, TMessageType, TAsyncOutputProtocol};
+use crate::protocol::{
+	/*TInputProtocol,*/ TMessageIdentifier, TMessageType, /*TOutputProtocol,*/
+	TAsyncInputProtocol, TAsyncOutputProtocol
+};
 use crate::{ApplicationError, ApplicationErrorKind};
 
 mod multiplexed;
 mod threaded;
 
 // pub use self::multiplexed::TMultiplexedProcessor;
-pub use self::threaded::TServer;
+// pub use self::threaded::TServer;
+pub use self::async_server::TAsyncServer;
+
+///////////////// Async part start ///////////////////////
+//use futures::{Poll, Async};
+use std::task::Poll;
+//use std::pin::Pin;
 
 use async_trait::async_trait;
+
+mod async_server;
+
+#[async_trait]
+pub trait TAsyncProcessor {
+    //fn process(&self, i: &mut dyn TAsyncInputProtocol, o: &mut dyn TAsyncOutputProtocol) -> Poll<crate::Result<()>>;
+    async fn process(&self, i: &mut (dyn TAsyncInputProtocol + Send), o: &mut (dyn TAsyncOutputProtocol + Send)) -> crate::Result<()>;
+}
+
+//pub fn handle_process_result_async(
+//    msg_ident: &TMessageIdentifier,
+//    res: crate::Result<()>,
+//    o_prot: &mut dyn TAsyncOutputProtocol,
+//) -> Poll<crate::Result<()>> {
+//		println!("before write result");
+//    if let Err(e) = res {
+//        let e = match e {
+//            crate::Error::Application(a) => a,
+//            _ => ApplicationError::new(ApplicationErrorKind::Unknown, format!("{:?}", e)),
+//        };
+//
+//        let ident = TMessageIdentifier::new(
+//            msg_ident.name.clone(),
+//            TMessageType::Exception,
+//            msg_ident.sequence_number,
+//        );
+//
+//		println!("ready to write result");
+//        ready!(o_prot.write_message_begin(&ident))?;
+//        ready!(crate::Error::write_application_error_to_out_protocol_async(&e, o_prot))?;
+//        ready!(o_prot.write_message_end())?;
+//        o_prot.flush()
+//    } else {
+//        Poll::Ready(Ok(()))
+//    }
+//}
+///////////////// Async part end ///////////////////////
+
 
 /// Handles incoming Thrift messages and dispatches them to the user-defined
 /// handler functions.
@@ -86,7 +133,7 @@ use async_trait::async_trait;
 /// // at this point you can pass the processor to the server
 /// // let server = TServer::new(..., processor);
 /// ```
-#[async_trait]
+
 pub trait TProcessor {
     /// Process a Thrift service call.
     ///
@@ -94,15 +141,14 @@ pub trait TProcessor {
     /// the response to `o`.
     ///
     /// Returns `()` if the handler was executed; `Err` otherwise.
-    async fn process(&self, i: &mut dyn TAsyncInputProtocol, o: &mut dyn TAsyncInputProtocol) -> crate::Result<()>;
+    //fn process(&self, i: &mut dyn TInputProtocol, o: &mut dyn TOutputProtocol) -> crate::Result<()>;
+    fn process(&self, i: &mut dyn TAsyncInputProtocol, o: &mut dyn TAsyncOutputProtocol) -> crate::Result<()>;
 }
 
-/// Convenience function used in generated `TProcessor` implementations to
-/// return an `ApplicationError` if thrift message processing failed.
-pub fn handle_process_result(
+pub async fn handle_process_result(
     msg_ident: &TMessageIdentifier,
     res: crate::Result<()>,
-    o_prot: &mut dyn TAsyncOutputProtocol,
+    o_prot: &mut (dyn TAsyncOutputProtocol + Send),
 ) -> crate::Result<()> {
     if let Err(e) = res {
         let e = match e {
@@ -116,10 +162,10 @@ pub fn handle_process_result(
             msg_ident.sequence_number,
         );
 
-        o_prot.write_message_begin(&ident)?;
-        crate::Error::write_application_error_to_out_protocol(&e, o_prot)?;
-        o_prot.write_message_end()?;
-        o_prot.flush()
+        o_prot.write_message_begin(&ident).await?;
+        crate::Error::write_application_error_to_out_protocol(&e, o_prot).await?;
+        o_prot.write_message_end().await?;
+        o_prot.flush().await
     } else {
         Ok(())
     }

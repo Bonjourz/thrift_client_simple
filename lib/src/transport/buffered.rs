@@ -84,10 +84,10 @@ where
         }
     }
 
-    async fn get_bytes(&mut self) -> io::Result<&[u8]> {
+    fn get_bytes(&mut self) -> io::Result<&[u8]> {
         if self.cap - self.pos == 0 {
             self.pos = 0;
-            self.cap = self.chan.read(&mut self.buf).await?;
+            self.cap = self.chan.read(&mut self.buf)?;
         }
 
         Ok(&self.buf[self.pos..self.cap])
@@ -99,7 +99,6 @@ where
     }
 }
 
-#[async_trait]
 impl<C> Read for TBufferedReadTransport<C>
 where
     C: Read,
@@ -109,7 +108,7 @@ where
 
         loop {
             let nread = {
-                let avail_bytes = self.get_bytes().await?;
+                let avail_bytes = self.get_bytes()?;
                 let avail_space = buf.len() - bytes_read;
                 let nread = cmp::min(avail_space, avail_bytes.len());
                 buf[bytes_read..(bytes_read + nread)].copy_from_slice(&avail_bytes[..nread]);

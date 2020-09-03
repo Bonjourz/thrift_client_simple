@@ -18,152 +18,145 @@ use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
 use thrift::{ApplicationError, ApplicationErrorKind, ProtocolError, ProtocolErrorKind, TThriftClient};
-use thrift::protocol::{TFieldIdentifier, TListIdentifier, TMapIdentifier, TMessageIdentifier, TMessageType, TInputProtocol, TOutputProtocol, TSetIdentifier, TStructIdentifier, TType};
+use thrift::protocol::{TFieldIdentifier, TListIdentifier, TMapIdentifier, TMessageIdentifier, TMessageType, TAsyncInputProtocol, TAsyncOutputProtocol, TSetIdentifier, TStructIdentifier, TType};
 use thrift::protocol::field_id;
 use thrift::protocol::verify_expected_message_type;
 use thrift::protocol::verify_expected_sequence_number;
 use thrift::protocol::verify_expected_service_call;
 use thrift::protocol::verify_required_field_exists;
-use thrift::server::TProcessor;
+use thrift::server::TAsyncProcessor;
 
-//
-// SharedStruct
-//
+// For Rust Thrift Async
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct SharedStruct {
-  pub key: Option<i32>,
-  pub value: Option<String>,
-}
+use async_trait::async_trait;
 
-impl SharedStruct {
-  pub fn new<F1, F2>(key: F1, value: F2) -> SharedStruct where F1: Into<Option<i32>>, F2: Into<Option<String>> {
-    SharedStruct {
-      key: key.into(),
-      value: value.into(),
-    }
-  }
-  pub fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SharedStruct> {
-    i_prot.read_struct_begin()?;
-    let mut f_1: Option<i32> = Some(0);
-    let mut f_2: Option<String> = Some("".to_owned());
-    loop {
-      let field_ident = i_prot.read_field_begin()?;
-      if field_ident.field_type == TType::Stop {
-        break;
-      }
-      let field_id = field_id(&field_ident)?;
-      match field_id {
-        1 => {
-          let val = i_prot.read_i32()?;
-          f_1 = Some(val);
-        },
-        2 => {
-          let val = i_prot.read_string()?;
-          f_2 = Some(val);
-        },
-        _ => {
-          i_prot.skip(field_ident.field_type)?;
-        },
-      };
-      i_prot.read_field_end()?;
-    }
-    i_prot.read_struct_end()?;
-    let ret = SharedStruct {
-      key: f_1,
-      value: f_2,
-    };
-    Ok(ret)
-  }
-  pub fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("SharedStruct");
-    o_prot.write_struct_begin(&struct_ident)?;
-    if let Some(fld_var) = self.key {
-      o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::I32, 1))?;
-      o_prot.write_i32(fld_var)?;
-      o_prot.write_field_end()?;
-      ()
-    } else {
-      ()
-    }
-    if let Some(ref fld_var) = self.value {
-      o_prot.write_field_begin(&TFieldIdentifier::new("value", TType::String, 2))?;
-      o_prot.write_string(fld_var)?;
-      o_prot.write_field_end()?;
-      ()
-    } else {
-      ()
-    }
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
-  }
-}
 
-impl Default for SharedStruct {
-  fn default() -> Self {
-    SharedStruct{
-      key: Some(0),
-      value: Some("".to_owned()),
-    }
-  }
+// Definition for async trait
+
+#[async_trait]
+pub trait TRWProtocol<T> {
+  async fn read_from_in_protocol(i_prot: &mut (dyn TAsyncInputProtocol + Send)) -> thrift::Result<T>;
+  async fn write_to_out_protocol(&self, o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()>;
 }
 
 //
 // SharedService service client
 //
 
+/// This Thrift file can be included by other Thrift files that want to share
+/// these definitions.
+// Magic number: 09011020 generate for client async trait
+#[async_trait]
 pub trait TSharedServiceSyncClient {
-  fn get_struct(&mut self, key: i32) -> thrift::Result<SharedStruct>;
+  async fn add(&mut self, arg1: i32, arg2: i32) -> thrift::Result<i32>;
+  async fn send_packet(&mut self, str: String) -> thrift::Result<String>;
+  async fn send_empty(&mut self) -> thrift::Result<()>;
 }
 
 pub trait TSharedServiceSyncClientMarker {}
 
-pub struct SharedServiceSyncClient<IP, OP> where IP: TInputProtocol, OP: TOutputProtocol {
+pub struct SharedServiceSyncClient<IP, OP> where IP: TAsyncInputProtocol, OP: TAsyncOutputProtocol {
   _i_prot: IP,
   _o_prot: OP,
   _sequence_number: i32,
 }
 
-impl <IP, OP> SharedServiceSyncClient<IP, OP> where IP: TInputProtocol, OP: TOutputProtocol {
+impl <IP, OP> SharedServiceSyncClient<IP, OP> where IP: TAsyncInputProtocol, OP: TAsyncOutputProtocol {
   pub fn new(input_protocol: IP, output_protocol: OP) -> SharedServiceSyncClient<IP, OP> {
     SharedServiceSyncClient { _i_prot: input_protocol, _o_prot: output_protocol, _sequence_number: 0 }
   }
 }
 
-impl <IP, OP> TThriftClient for SharedServiceSyncClient<IP, OP> where IP: TInputProtocol, OP: TOutputProtocol {
-  fn i_prot_mut(&mut self) -> &mut dyn TInputProtocol { &mut self._i_prot }
-  fn o_prot_mut(&mut self) -> &mut dyn TOutputProtocol { &mut self._o_prot }
+impl <IP, OP> TThriftClient for SharedServiceSyncClient<IP, OP> where IP: TAsyncInputProtocol + Send, OP: TAsyncOutputProtocol + Send {
+  fn i_prot_mut(&mut self) -> &mut (dyn TAsyncInputProtocol + Send) { &mut self._i_prot }
+  fn o_prot_mut(&mut self) -> &mut (dyn TAsyncOutputProtocol + Send) { &mut self._o_prot }
   fn sequence_number(&self) -> i32 { self._sequence_number }
   fn increment_sequence_number(&mut self) -> i32 { self._sequence_number += 1; self._sequence_number }
 }
 
-impl <IP, OP> TSharedServiceSyncClientMarker for SharedServiceSyncClient<IP, OP> where IP: TInputProtocol, OP: TOutputProtocol {}
+impl <IP, OP> TSharedServiceSyncClientMarker for SharedServiceSyncClient<IP, OP> where IP: TAsyncInputProtocol, OP: TAsyncOutputProtocol {}
 
-impl <C: TThriftClient + TSharedServiceSyncClientMarker> TSharedServiceSyncClient for C {
-  fn get_struct(&mut self, key: i32) -> thrift::Result<SharedStruct> {
+// Magic number:09011023 generate for client_process impl
+#[async_trait]
+impl <C: TThriftClient + TSharedServiceSyncClientMarker + Send> TSharedServiceSyncClient for C {
+  async fn add(&mut self, arg1: i32, arg2: i32) -> thrift::Result<i32> {
     (
       {
         self.increment_sequence_number();
-        let message_ident = TMessageIdentifier::new("getStruct", TMessageType::Call, self.sequence_number());
-        let call_args = SharedServiceGetStructArgs { key: key };
-        self.o_prot_mut().write_message_begin(&message_ident)?;
-        call_args.write_to_out_protocol(self.o_prot_mut())?;
-        self.o_prot_mut().write_message_end()?;
-        self.o_prot_mut().flush()
+        let message_ident = TMessageIdentifier::new("add", TMessageType::Call, self.sequence_number());
+        let call_args = SharedServiceAddArgs { arg1: arg1, arg2: arg2 };
+        self.o_prot_mut().write_message_begin(&message_ident).await?;
+        call_args.write_to_out_protocol(self.o_prot_mut()).await?;
+        self.o_prot_mut().write_message_end().await?;
+        self.o_prot_mut().flush().await
       }
     )?;
     {
-      let message_ident = self.i_prot_mut().read_message_begin()?;
+      let message_ident = self.i_prot_mut().read_message_begin().await?;
       verify_expected_sequence_number(self.sequence_number(), message_ident.sequence_number)?;
-      verify_expected_service_call("getStruct", &message_ident.name)?;
+      verify_expected_service_call("add", &message_ident.name)?;
       if message_ident.message_type == TMessageType::Exception {
-        let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut())?;
-        self.i_prot_mut().read_message_end()?;
+        let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut()).await?;
+        self.i_prot_mut().read_message_end().await?;
         return Err(thrift::Error::Application(remote_error))
       }
       verify_expected_message_type(TMessageType::Reply, message_ident.message_type)?;
-      let result = SharedServiceGetStructResult::read_from_in_protocol(self.i_prot_mut())?;
-      self.i_prot_mut().read_message_end()?;
+      let result = SharedServiceAddResult::read_from_in_protocol(self.i_prot_mut()).await?;
+      self.i_prot_mut().read_message_end().await?;
+      result.ok_or()
+    }
+  }
+  async fn send_packet(&mut self, str: String) -> thrift::Result<String> {
+    (
+      {
+        self.increment_sequence_number();
+        let message_ident = TMessageIdentifier::new("send_packet", TMessageType::Call, self.sequence_number());
+        let call_args = SharedServiceSendPacketArgs { str: str };
+        self.o_prot_mut().write_message_begin(&message_ident).await?;
+        call_args.write_to_out_protocol(self.o_prot_mut()).await?;
+        self.o_prot_mut().write_message_end().await?;
+        self.o_prot_mut().flush().await
+      }
+    )?;
+    {
+      let message_ident = self.i_prot_mut().read_message_begin().await?;
+      verify_expected_sequence_number(self.sequence_number(), message_ident.sequence_number)?;
+      verify_expected_service_call("send_packet", &message_ident.name)?;
+      if message_ident.message_type == TMessageType::Exception {
+        let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut()).await?;
+        self.i_prot_mut().read_message_end().await?;
+        return Err(thrift::Error::Application(remote_error))
+      }
+      verify_expected_message_type(TMessageType::Reply, message_ident.message_type)?;
+      let result = SharedServiceSendPacketResult::read_from_in_protocol(self.i_prot_mut()).await?;
+      self.i_prot_mut().read_message_end().await?;
+      result.ok_or()
+    }
+  }
+  async fn send_empty(&mut self) -> thrift::Result<()> {
+    (
+      {
+        self.increment_sequence_number();
+        let message_ident = TMessageIdentifier::new("send_empty", TMessageType::Call, self.sequence_number());
+        let call_args = SharedServiceSendEmptyArgs {  };
+        self.o_prot_mut().write_message_begin(&message_ident).await?;
+        call_args.write_to_out_protocol(self.o_prot_mut()).await?;
+        self.o_prot_mut().write_message_end().await?;
+        self.o_prot_mut().flush().await
+      }
+    )?;
+    {
+      let message_ident = self.i_prot_mut().read_message_begin().await?;
+      verify_expected_sequence_number(self.sequence_number(), message_ident.sequence_number)?;
+      verify_expected_service_call("send_empty", &message_ident.name)?;
+      if message_ident.message_type == TMessageType::Exception {
+        let remote_error = thrift::Error::read_application_error_from_in_protocol(self.i_prot_mut()).await?;
+        self.i_prot_mut().read_message_end().await?;
+        return Err(thrift::Error::Application(remote_error))
+      }
+      verify_expected_message_type(TMessageType::Reply, message_ident.message_type)?;
+      let result = SharedServiceSendEmptyResult::read_from_in_protocol(self.i_prot_mut()).await?;
+      self.i_prot_mut().read_message_end().await?;
       result.ok_or()
     }
   }
@@ -173,47 +166,64 @@ impl <C: TThriftClient + TSharedServiceSyncClientMarker> TSharedServiceSyncClien
 // SharedService service processor
 //
 
-pub trait SharedServiceSyncHandler {
-  fn handle_get_struct(&self, key: i32) -> thrift::Result<SharedStruct>;
-}
+/// This Thrift file can be included by other Thrift files that want to share
+/// these definitions.
 
-pub struct SharedServiceSyncProcessor<H: SharedServiceSyncHandler> {
+// Magic number:091037 generate handler async trait
+#[async_trait]
+pub trait SharedServiceSyncHandler {
+  async fn handle_add(&self, arg1: i32, arg2: i32) -> thrift::Result<i32>;
+  async fn handle_send_packet(&self, str: String) -> thrift::Result<String>;
+  async fn handle_send_empty(&self) -> thrift::Result<()>;
+}
+// Magic number:09011500 at the end
+
+pub struct SharedServiceSyncProcessor<H: SharedServiceSyncHandler + Send + std::marker::Sync> {
   handler: H,
 }
 
-impl <H: SharedServiceSyncHandler> SharedServiceSyncProcessor<H> {
+impl <H: SharedServiceSyncHandler + Send + std::marker::Sync> SharedServiceSyncProcessor<H> {
   pub fn new(handler: H) -> SharedServiceSyncProcessor<H> {
     SharedServiceSyncProcessor {
       handler,
     }
   }
-  fn process_get_struct(&self, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    TSharedServiceProcessFunctions::process_get_struct(&self.handler, incoming_sequence_number, i_prot, o_prot)
+ // Magic Number: 09011505 before render sync process delegation
+  async fn process_add(&self, incoming_sequence_number: i32, i_prot: &mut (dyn TAsyncInputProtocol + Send), o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    TSharedServiceProcessFunctions::process_add(&self.handler, incoming_sequence_number, i_prot, o_prot).await
   }
+  async fn process_send_packet(&self, incoming_sequence_number: i32, i_prot: &mut (dyn TAsyncInputProtocol + Send), o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    TSharedServiceProcessFunctions::process_send_packet(&self.handler, incoming_sequence_number, i_prot, o_prot).await
+  }
+  async fn process_send_empty(&self, incoming_sequence_number: i32, i_prot: &mut (dyn TAsyncInputProtocol + Send), o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    TSharedServiceProcessFunctions::process_send_empty(&self.handler, incoming_sequence_number, i_prot, o_prot).await
+  }
+ // Magic Number: 09011506 after render sync process delegation
 }
 
 pub struct TSharedServiceProcessFunctions;
 
 impl TSharedServiceProcessFunctions {
-  pub fn process_get_struct<H: SharedServiceSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let args = SharedServiceGetStructArgs::read_from_in_protocol(i_prot)?;
-    match handler.handle_get_struct(args.key) {
+  pub async fn process_add<H: SharedServiceSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut (dyn TAsyncInputProtocol + Send), o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let args = SharedServiceAddArgs::read_from_in_protocol(i_prot).await?;
+    match handler.handle_add(args.arg1, args.arg2).await {
       Ok(handler_return) => {
-        let message_ident = TMessageIdentifier::new("getStruct", TMessageType::Reply, incoming_sequence_number);
-        o_prot.write_message_begin(&message_ident)?;
-        let ret = SharedServiceGetStructResult { result_value: Some(handler_return) };
-        ret.write_to_out_protocol(o_prot)?;
-        o_prot.write_message_end()?;
-        o_prot.flush()
+        let message_ident = TMessageIdentifier::new("add", TMessageType::Reply, incoming_sequence_number);
+        o_prot.write_message_begin(&message_ident).await?;
+        let ret = SharedServiceAddResult { result_value: Some(handler_return) };
+        ret.write_to_out_protocol(o_prot).await?;
+        o_prot.write_message_end().await?;
+        o_prot.flush().await
       },
       Err(e) => {
+        // Magic num: 09011535 before handler failed
         match e {
           thrift::Error::Application(app_err) => {
-            let message_ident = TMessageIdentifier::new("getStruct", TMessageType::Exception, incoming_sequence_number);
-            o_prot.write_message_begin(&message_ident)?;
-            thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot)?;
-            o_prot.write_message_end()?;
-            o_prot.flush()
+            let message_ident = TMessageIdentifier::new("add", TMessageType::Exception, incoming_sequence_number);
+            o_prot.write_message_begin(&message_ident).await?;
+            thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot).await?;
+            o_prot.write_message_end().await?;
+            o_prot.flush().await
           },
           _ => {
             let ret_err = {
@@ -222,26 +232,115 @@ impl TSharedServiceProcessFunctions {
                 e.description()
               )
             };
-            let message_ident = TMessageIdentifier::new("getStruct", TMessageType::Exception, incoming_sequence_number);
-            o_prot.write_message_begin(&message_ident)?;
-            thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot)?;
-            o_prot.write_message_end()?;
-            o_prot.flush()
+            let message_ident = TMessageIdentifier::new("add", TMessageType::Exception, incoming_sequence_number);
+            o_prot.write_message_begin(&message_ident).await?;
+            thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot).await?;
+            o_prot.write_message_end().await?;
+            o_prot.flush().await
           },
         }
+        // Magic num: 09011535 after handler failed
+      },
+    }
+  }
+  pub async fn process_send_packet<H: SharedServiceSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut (dyn TAsyncInputProtocol + Send), o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let args = SharedServiceSendPacketArgs::read_from_in_protocol(i_prot).await?;
+    match handler.handle_send_packet(args.str).await {
+      Ok(handler_return) => {
+        let message_ident = TMessageIdentifier::new("send_packet", TMessageType::Reply, incoming_sequence_number);
+        o_prot.write_message_begin(&message_ident).await?;
+        let ret = SharedServiceSendPacketResult { result_value: Some(handler_return) };
+        ret.write_to_out_protocol(o_prot).await?;
+        o_prot.write_message_end().await?;
+        o_prot.flush().await
+      },
+      Err(e) => {
+        // Magic num: 09011535 before handler failed
+        match e {
+          thrift::Error::Application(app_err) => {
+            let message_ident = TMessageIdentifier::new("send_packet", TMessageType::Exception, incoming_sequence_number);
+            o_prot.write_message_begin(&message_ident).await?;
+            thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot).await?;
+            o_prot.write_message_end().await?;
+            o_prot.flush().await
+          },
+          _ => {
+            let ret_err = {
+              ApplicationError::new(
+                ApplicationErrorKind::Unknown,
+                e.description()
+              )
+            };
+            let message_ident = TMessageIdentifier::new("send_packet", TMessageType::Exception, incoming_sequence_number);
+            o_prot.write_message_begin(&message_ident).await?;
+            thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot).await?;
+            o_prot.write_message_end().await?;
+            o_prot.flush().await
+          },
+        }
+        // Magic num: 09011535 after handler failed
+      },
+    }
+  }
+  pub async fn process_send_empty<H: SharedServiceSyncHandler>(handler: &H, incoming_sequence_number: i32, i_prot: &mut (dyn TAsyncInputProtocol + Send), o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let _ = SharedServiceSendEmptyArgs::read_from_in_protocol(i_prot).await?;
+    match handler.handle_send_empty().await {
+      Ok(_) => {
+        let message_ident = TMessageIdentifier::new("send_empty", TMessageType::Reply, incoming_sequence_number);
+        o_prot.write_message_begin(&message_ident).await?;
+        let ret = SharedServiceSendEmptyResult {  };
+        ret.write_to_out_protocol(o_prot).await?;
+        o_prot.write_message_end().await?;
+        o_prot.flush().await
+      },
+      Err(e) => {
+        // Magic num: 09011535 before handler failed
+        match e {
+          thrift::Error::Application(app_err) => {
+            let message_ident = TMessageIdentifier::new("send_empty", TMessageType::Exception, incoming_sequence_number);
+            o_prot.write_message_begin(&message_ident).await?;
+            thrift::Error::write_application_error_to_out_protocol(&app_err, o_prot).await?;
+            o_prot.write_message_end().await?;
+            o_prot.flush().await
+          },
+          _ => {
+            let ret_err = {
+              ApplicationError::new(
+                ApplicationErrorKind::Unknown,
+                e.description()
+              )
+            };
+            let message_ident = TMessageIdentifier::new("send_empty", TMessageType::Exception, incoming_sequence_number);
+            o_prot.write_message_begin(&message_ident).await?;
+            thrift::Error::write_application_error_to_out_protocol(&ret_err, o_prot).await?;
+            o_prot.write_message_end().await?;
+            o_prot.flush().await
+          },
+        }
+        // Magic num: 09011535 after handler failed
       },
     }
   }
 }
 
-impl <H: SharedServiceSyncHandler> TProcessor for SharedServiceSyncProcessor<H> {
-  fn process(&self, i_prot: &mut dyn TInputProtocol, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let message_ident = i_prot.read_message_begin()?;
+#[async_trait]
+impl <H: SharedServiceSyncHandler + Send + Sync> TAsyncProcessor for SharedServiceSyncProcessor<H> {
+  async fn process(&self, i_prot: &mut (dyn TAsyncInputProtocol + Send), o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let message_ident = i_prot.read_message_begin().await?;
     let res = match &*message_ident.name {
-      "getStruct" => {
-        self.process_get_struct(message_ident.sequence_number, i_prot, o_prot)
+// Magic number: 09010345 before render process match statesment
+      "add" => {
+        self.process_add(message_ident.sequence_number, i_prot, o_prot).await
       },
+      "send_packet" => {
+        self.process_send_packet(message_ident.sequence_number, i_prot, o_prot).await
+      },
+      "send_empty" => {
+        self.process_send_empty(message_ident.sequence_number, i_prot, o_prot).await
+      },
+// Magic number: 09010345 after render process match statesment
       method => {
+        println!("[gbd] process error here");
         Err(
           thrift::Error::Application(
             ApplicationError::new(
@@ -252,109 +351,85 @@ impl <H: SharedServiceSyncHandler> TProcessor for SharedServiceSyncProcessor<H> 
         )
       },
     };
-    thrift::server::handle_process_result(&message_ident, res, o_prot)
+    thrift::server::handle_process_result(&message_ident, res, o_prot).await
   }
 }
 
 //
-// SharedServiceGetStructArgs
+// SharedServiceAddArgs
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct SharedServiceGetStructArgs {
-  key: i32,
+struct SharedServiceAddArgs {
+  arg1: i32,
+  arg2: i32,
 }
 
-impl SharedServiceGetStructArgs {
-  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SharedServiceGetStructArgs> {
-    i_prot.read_struct_begin()?;
+impl SharedServiceAddArgs {
+}
+
+// Magic number:911001 generate async trait imple for SharedServiceAddArgs
+#[async_trait]
+impl TRWProtocol<SharedServiceAddArgs> for SharedServiceAddArgs {
+  async fn read_from_in_protocol(i_prot: &mut (dyn TAsyncInputProtocol + Send)) -> thrift::Result<SharedServiceAddArgs> {
+    i_prot.read_struct_begin().await?;
     let mut f_1: Option<i32> = None;
+    let mut f_2: Option<i32> = None;
     loop {
-      let field_ident = i_prot.read_field_begin()?;
+      let field_ident = i_prot.read_field_begin().await?;
       if field_ident.field_type == TType::Stop {
         break;
       }
       let field_id = field_id(&field_ident)?;
       match field_id {
         1 => {
-          let val = i_prot.read_i32()?;
+          let val = i_prot.read_i32().await?;
           f_1 = Some(val);
         },
+        2 => {
+          let val = i_prot.read_i32().await?;
+          f_2 = Some(val);
+        },
         _ => {
-          i_prot.skip(field_ident.field_type)?;
+          i_prot.skip(field_ident.field_type).await?;
         },
       };
-      i_prot.read_field_end()?;
+      i_prot.read_field_end().await?;
     }
-    i_prot.read_struct_end()?;
-    verify_required_field_exists("SharedServiceGetStructArgs.key", &f_1)?;
-    let ret = SharedServiceGetStructArgs {
-      key: f_1.expect("auto-generated code should have checked for presence of required fields"),
+    i_prot.read_struct_end().await?;
+    verify_required_field_exists("SharedServiceAddArgs.arg1", &f_1)?;
+    verify_required_field_exists("SharedServiceAddArgs.arg2", &f_2)?;
+    let ret = SharedServiceAddArgs {
+      arg1: f_1.expect("auto-generated code should have checked for presence of required fields"),
+      arg2: f_2.expect("auto-generated code should have checked for presence of required fields"),
     };
     Ok(ret)
   }
-  fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("getStruct_args");
-    o_prot.write_struct_begin(&struct_ident)?;
-    o_prot.write_field_begin(&TFieldIdentifier::new("key", TType::I32, 1))?;
-    o_prot.write_i32(self.key)?;
-    o_prot.write_field_end()?;
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
+  async fn write_to_out_protocol(&self, o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("add_args");
+    o_prot.write_struct_begin(&struct_ident).await?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("arg1", TType::I32, 1)).await?;
+    o_prot.write_i32(self.arg1).await?;
+    o_prot.write_field_end().await?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("arg2", TType::I32, 2)).await?;
+    o_prot.write_i32(self.arg2).await?;
+    o_prot.write_field_end().await?;
+    o_prot.write_field_stop().await?;
+    o_prot.write_struct_end().await
   }
 }
 
 //
-// SharedServiceGetStructResult
+// SharedServiceAddResult
 //
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-struct SharedServiceGetStructResult {
-  result_value: Option<SharedStruct>,
+struct SharedServiceAddResult {
+  result_value: Option<i32>,
 }
 
-impl SharedServiceGetStructResult {
-  fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SharedServiceGetStructResult> {
-    i_prot.read_struct_begin()?;
-    let mut f_0: Option<SharedStruct> = None;
-    loop {
-      let field_ident = i_prot.read_field_begin()?;
-      if field_ident.field_type == TType::Stop {
-        break;
-      }
-      let field_id = field_id(&field_ident)?;
-      match field_id {
-        0 => {
-          let val = SharedStruct::read_from_in_protocol(i_prot)?;
-          f_0 = Some(val);
-        },
-        _ => {
-          i_prot.skip(field_ident.field_type)?;
-        },
-      };
-      i_prot.read_field_end()?;
-    }
-    i_prot.read_struct_end()?;
-    let ret = SharedServiceGetStructResult {
-      result_value: f_0,
-    };
-    Ok(ret)
-  }
-  fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
-    let struct_ident = TStructIdentifier::new("SharedServiceGetStructResult");
-    o_prot.write_struct_begin(&struct_ident)?;
-    if let Some(ref fld_var) = self.result_value {
-      o_prot.write_field_begin(&TFieldIdentifier::new("result_value", TType::Struct, 0))?;
-      fld_var.write_to_out_protocol(o_prot)?;
-      o_prot.write_field_end()?;
-      ()
-    } else {
-      ()
-    }
-    o_prot.write_field_stop()?;
-    o_prot.write_struct_end()
-  }
-  fn ok_or(self) -> thrift::Result<SharedStruct> {
+impl SharedServiceAddResult {
+  fn ok_or(self) -> thrift::Result<i32> {
     if self.result_value.is_some() {
       Ok(self.result_value.unwrap())
     } else {
@@ -362,11 +437,265 @@ impl SharedServiceGetStructResult {
         thrift::Error::Application(
           ApplicationError::new(
             ApplicationErrorKind::MissingResult,
-            "no result received for SharedServiceGetStruct"
+            "no result received for SharedServiceAdd"
           )
         )
       )
     }
+  }
+}
+
+// Magic number:911001 generate async trait imple for SharedServiceAddResult
+#[async_trait]
+impl TRWProtocol<SharedServiceAddResult> for SharedServiceAddResult {
+  async fn read_from_in_protocol(i_prot: &mut (dyn TAsyncInputProtocol + Send)) -> thrift::Result<SharedServiceAddResult> {
+    i_prot.read_struct_begin().await?;
+    let mut f_0: Option<i32> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin().await?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        0 => {
+          let val = i_prot.read_i32().await?;
+          f_0 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type).await?;
+        },
+      };
+      i_prot.read_field_end().await?;
+    }
+    i_prot.read_struct_end().await?;
+    let ret = SharedServiceAddResult {
+      result_value: f_0,
+    };
+    Ok(ret)
+  }
+  async fn write_to_out_protocol(&self, o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("SharedServiceAddResult");
+    o_prot.write_struct_begin(&struct_ident).await?;
+    if let Some(fld_var) = self.result_value {
+      o_prot.write_field_begin(&TFieldIdentifier::new("result_value", TType::I32, 0)).await?;
+      o_prot.write_i32(fld_var).await?;
+      o_prot.write_field_end().await?;
+      ()
+    } else {
+      ()
+    }
+    o_prot.write_field_stop().await?;
+    o_prot.write_struct_end().await
+  }
+}
+
+//
+// SharedServiceSendPacketArgs
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct SharedServiceSendPacketArgs {
+  str: String,
+}
+
+impl SharedServiceSendPacketArgs {
+}
+
+// Magic number:911001 generate async trait imple for SharedServiceSendPacketArgs
+#[async_trait]
+impl TRWProtocol<SharedServiceSendPacketArgs> for SharedServiceSendPacketArgs {
+  async fn read_from_in_protocol(i_prot: &mut (dyn TAsyncInputProtocol + Send)) -> thrift::Result<SharedServiceSendPacketArgs> {
+    i_prot.read_struct_begin().await?;
+    let mut f_1: Option<String> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin().await?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        1 => {
+          let val = i_prot.read_string().await?;
+          f_1 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type).await?;
+        },
+      };
+      i_prot.read_field_end().await?;
+    }
+    i_prot.read_struct_end().await?;
+    verify_required_field_exists("SharedServiceSendPacketArgs.str", &f_1)?;
+    let ret = SharedServiceSendPacketArgs {
+      str: f_1.expect("auto-generated code should have checked for presence of required fields"),
+    };
+    Ok(ret)
+  }
+  async fn write_to_out_protocol(&self, o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("send_packet_args");
+    o_prot.write_struct_begin(&struct_ident).await?;
+    o_prot.write_field_begin(&TFieldIdentifier::new("str", TType::String, 1)).await?;
+    o_prot.write_string(&self.str).await?;
+    o_prot.write_field_end().await?;
+    o_prot.write_field_stop().await?;
+    o_prot.write_struct_end().await
+  }
+}
+
+//
+// SharedServiceSendPacketResult
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct SharedServiceSendPacketResult {
+  result_value: Option<String>,
+}
+
+impl SharedServiceSendPacketResult {
+  fn ok_or(self) -> thrift::Result<String> {
+    if self.result_value.is_some() {
+      Ok(self.result_value.unwrap())
+    } else {
+      Err(
+        thrift::Error::Application(
+          ApplicationError::new(
+            ApplicationErrorKind::MissingResult,
+            "no result received for SharedServiceSendPacket"
+          )
+        )
+      )
+    }
+  }
+}
+
+// Magic number:911001 generate async trait imple for SharedServiceSendPacketResult
+#[async_trait]
+impl TRWProtocol<SharedServiceSendPacketResult> for SharedServiceSendPacketResult {
+  async fn read_from_in_protocol(i_prot: &mut (dyn TAsyncInputProtocol + Send)) -> thrift::Result<SharedServiceSendPacketResult> {
+    i_prot.read_struct_begin().await?;
+    let mut f_0: Option<String> = None;
+    loop {
+      let field_ident = i_prot.read_field_begin().await?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        0 => {
+          let val = i_prot.read_string().await?;
+          f_0 = Some(val);
+        },
+        _ => {
+          i_prot.skip(field_ident.field_type).await?;
+        },
+      };
+      i_prot.read_field_end().await?;
+    }
+    i_prot.read_struct_end().await?;
+    let ret = SharedServiceSendPacketResult {
+      result_value: f_0,
+    };
+    Ok(ret)
+  }
+  async fn write_to_out_protocol(&self, o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("SharedServiceSendPacketResult");
+    o_prot.write_struct_begin(&struct_ident).await?;
+    if let Some(ref fld_var) = self.result_value {
+      o_prot.write_field_begin(&TFieldIdentifier::new("result_value", TType::String, 0)).await?;
+      o_prot.write_string(fld_var).await?;
+      o_prot.write_field_end().await?;
+      ()
+    } else {
+      ()
+    }
+    o_prot.write_field_stop().await?;
+    o_prot.write_struct_end().await
+  }
+}
+
+//
+// SharedServiceSendEmptyArgs
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct SharedServiceSendEmptyArgs {
+}
+
+impl SharedServiceSendEmptyArgs {
+}
+
+// Magic number:911001 generate async trait imple for SharedServiceSendEmptyArgs
+#[async_trait]
+impl TRWProtocol<SharedServiceSendEmptyArgs> for SharedServiceSendEmptyArgs {
+  async fn read_from_in_protocol(i_prot: &mut (dyn TAsyncInputProtocol + Send)) -> thrift::Result<SharedServiceSendEmptyArgs> {
+    i_prot.read_struct_begin().await?;
+    loop {
+      let field_ident = i_prot.read_field_begin().await?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        _ => {
+          i_prot.skip(field_ident.field_type).await?;
+        },
+      };
+      i_prot.read_field_end().await?;
+    }
+    i_prot.read_struct_end().await?;
+    let ret = SharedServiceSendEmptyArgs {};
+    Ok(ret)
+  }
+  async fn write_to_out_protocol(&self, o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("send_empty_args");
+    o_prot.write_struct_begin(&struct_ident).await?;
+    o_prot.write_field_stop().await?;
+    o_prot.write_struct_end().await
+  }
+}
+
+//
+// SharedServiceSendEmptyResult
+//
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+struct SharedServiceSendEmptyResult {
+}
+
+impl SharedServiceSendEmptyResult {
+  fn ok_or(self) -> thrift::Result<()> {
+    Ok(())
+  }
+}
+
+// Magic number:911001 generate async trait imple for SharedServiceSendEmptyResult
+#[async_trait]
+impl TRWProtocol<SharedServiceSendEmptyResult> for SharedServiceSendEmptyResult {
+  async fn read_from_in_protocol(i_prot: &mut (dyn TAsyncInputProtocol + Send)) -> thrift::Result<SharedServiceSendEmptyResult> {
+    i_prot.read_struct_begin().await?;
+    loop {
+      let field_ident = i_prot.read_field_begin().await?;
+      if field_ident.field_type == TType::Stop {
+        break;
+      }
+      let field_id = field_id(&field_ident)?;
+      match field_id {
+        _ => {
+          i_prot.skip(field_ident.field_type).await?;
+        },
+      };
+      i_prot.read_field_end().await?;
+    }
+    i_prot.read_struct_end().await?;
+    let ret = SharedServiceSendEmptyResult {};
+    Ok(ret)
+  }
+  async fn write_to_out_protocol(&self, o_prot: &mut (dyn TAsyncOutputProtocol + Send)) -> thrift::Result<()> {
+    let struct_ident = TStructIdentifier::new("SharedServiceSendEmptyResult");
+    o_prot.write_struct_begin(&struct_ident).await?;
+    o_prot.write_field_stop().await?;
+    o_prot.write_struct_end().await
   }
 }
 
