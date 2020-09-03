@@ -48,7 +48,7 @@ const PORT : u16 = 11235;
 
 fn get_duration(start_time : SystemTime, end_time: SystemTime) -> Duration {
     let duration = end_time.duration_since(start_time);
-    let mut duration_time = Duration::from_secs(1);
+    let mut duration_time = Duration::from_secs(0);
     match duration {
         Ok(_d) => {duration_time = _d;},
         _ => { println!("[gbd] get duration error!"); },
@@ -221,14 +221,18 @@ fn run_latency_test(thread_num: u64, req_per_conn: u64,
 fn test_qps(loop_num: u64, req_per_conn: u64, t_idx : u64) -> thrift::Result<()> {
     let mut time_in_ns : u64 = 0;
 	
-	println!("after spawn thread: {}", t_idx);
-	let time_begin = SystemTime::now();
+	// println!("after spawn thread: {}", t_idx);
+	//let time_begin = SystemTime::now();
+	let mut latency_total = 0;
     for _i in 0..loop_num {
         let mut client = new_client(SERVER_ADDR, PORT)?;
         // let target_val = 3;
 
         for _i in 0..req_per_conn {
+			let time_begin = SystemTime::now();
             client.add(1, 2)?; 
+			let time_end = SystemTime::now();
+			latency_total += get_duration_in_ns(time_begin, time_end); 
 			/* 
             match client.add(arg1, arg2) {
 				Ok(_val) => {/*assert_eq!(_val, target_val)*/},
@@ -237,9 +241,10 @@ fn test_qps(loop_num: u64, req_per_conn: u64, t_idx : u64) -> thrift::Result<()>
 		*/
         }
     }
-	let time_end = SystemTime::now();
-    println!("latency in ms: {} thread_idx: {}", 
-			get_duration_in_ms(time_begin, time_end), t_idx);
+	//let time_end = SystemTime::now();
+    //println!("latency in ms: {} thread_idx: {}", 
+			//get_duration_in_ms(time_begin, time_end), t_idx);
+	//println!("latency average: {} ms", (latency_total as f64 / 1000_000 as f64) / (loop_num as f64 * req_per_conn as f64));
 	Ok(())
 }
 
@@ -268,7 +273,7 @@ fn test_qps(loop_num: u64, req_per_conn: u64, t_idx : u64) -> thrift::Result<()>
     let time_end = SystemTime::now();
     let time_in_ms = get_duration_in_ms(time_begin, time_end);
 	println!("{:?}\n{:?}\n{}", time_begin, time_end, time_in_ms);
-    println!("{} Req/s", thread_num * loop_num * req_per_conn / (time_in_ms / 1000));
+    println!("{} Req/s", (thread_num * loop_num * req_per_conn) as f64 / (time_in_ms as f64 / 1000 as f64));
     Ok(())
 }
 
