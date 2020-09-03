@@ -45,7 +45,7 @@ use std::collections::VecDeque;
 
 extern crate core_affinity;
 
-const SERVER_ADDR : &'static str = "127.0.0.1";
+const SERVER_ADDR : &'static str = "10.108.21.58";
 const PORT : u16 = 11235;
 
 fn get_duration(start_time : SystemTime, end_time: SystemTime) -> Duration {
@@ -333,7 +333,7 @@ fn main() {
     match option {
         /* Run qps test */
         0 => {
-            match run_qps_test(thread_num, 100000, 10) {
+            match run_qps_test(thread_num, 100000, 64) {
                 Ok(_ok) => {},
                 Err(_err) => { println!("run_qps_test err: {:?}", _err); },
             };
