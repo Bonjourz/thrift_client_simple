@@ -61,6 +61,8 @@ use rthrift_tutorial::shared::{TSharedServiceSyncClient, SharedServiceSyncClient
 type ClientInputProtocol = TAsyncBinaryInputProtocol<TAsyncBufferedReadTransport<OwnedReadHalf>>;
 type ClientOutputProtocol = TAsyncBinaryOutputProtocol<TAsyncBufferedWriteTransport<OwnedWriteHalf>>;
 
+const SERVER_TARGET : &'static str = "127.0.0.1:11235";
+
 async fn async_run_client_one(host : String, port: u16,
     args1: i32) -> thrift::Result<i32> {
     let mut client = new_client(&host, port).await?;
@@ -172,14 +174,14 @@ async fn new_client
     host: &str,
     port: u16,
 ) -> thrift::Result<SharedServiceSyncClient<ClientInputProtocol, ClientOutputProtocol>> {
-    let mut stream = TcpStream::connect("127.0.0.1:11235").await?;
+    let mut stream = TcpStream::connect(SERVER_TARGET).await?;
 
     //println!("connecting to tutorial server on {}:{}", host, port);
     //c.open(&format!("{}:{}", host, port))?;
 
     // clone the TCP channel into two halves, one which
     // we'll use for reading, the other for writing
-    let (mut i_chan, mut o_chan) = stream.into_split();
+    let (i_chan, o_chan) = stream.into_split();
 
     // wrap the raw sockets (slow) with a buffered transport of some kind
     let i_tran = TAsyncBufferedReadTransport::new(i_chan);

@@ -190,17 +190,17 @@ where
 			cx: &mut Context<'_>, 
 			buf: &[u8],
 	) -> Poll<io::Result<usize>> {
-		println!("Buffered poll write");
+		// println!("Buffered poll write");
 		let mut me = self.project(); 
 		if !buf.is_empty() {
 			let mut avail_bytes;
 
 			loop {
 				avail_bytes = cmp::min(buf.len(), *me.cap - me.buf.len());
-				println!("len: {}, cap: {}, melen: {}", 
-						buf.len(), *me.cap, me.buf.len());
+				// println!("len: {}, cap: {}, melen: {}", 
+				// 		buf.len(), *me.cap, me.buf.len());
 				if avail_bytes == 0 {
-					println!("ready to write all");
+					// println!("ready to write all");
 					let mut need_write = me.buf.len() - *me.pos; 
 					if need_write > 0 {
 						loop {
@@ -209,7 +209,7 @@ where
 
 							if *me.pos == me.buf.len() {
 								// all has been write
-								println!("clear buf in write");
+								// println!("clear buf in write");
 								me.buf.clear();
 								*me.pos = 0;
 								break;
@@ -238,7 +238,7 @@ where
 			cx: &mut Context<'_>, 
 	) -> Poll<io::Result<()>> {
 		let mut me = self.project(); 
-		println!("Buffered poll flush, buf len: {}", me.buf.len());
+		// println!("Buffered poll flush, buf len: {}", me.buf.len());
 		let mut need_write = me.buf.len() - *me.pos; 
 		if need_write > 0 {
 			loop {
@@ -260,7 +260,7 @@ where
 			self: Pin<&mut Self>, 
 			cx: &mut Context<'_>, 
 	) -> Poll<io::Result<()>> {
-		println!("Buffered poll shutdown");
+		// println!("Buffered poll shutdown");
 		let mut me = self.project(); 
 		me.chan.poll_shutdown(cx)
 	}

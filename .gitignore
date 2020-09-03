@@ -1,3 +1,4 @@
+Cargo.lock
 lib/target
 lib/test
 src/lib/test

@@ -80,10 +80,6 @@ where
    }
 }
 
-async fn process_req() {
-
-}
-
 async fn worker_func<PRC>(
     processor: Arc<PRC>,
     addr: &SocketAddr,
@@ -91,19 +87,19 @@ async fn worker_func<PRC>(
 ) where
     PRC: TAsyncProcessor + Send + Sync + 'static,
 {
-   println!("a new worker thread");
-   let listener = match *addr {
-       SocketAddr::V4(_) => net2::TcpBuilder::new_v4().unwrap(),
-       SocketAddr::V6(_) => net2::TcpBuilder::new_v6().unwrap(),
-   };
-   configure_tcp(workers, &listener).unwrap();
-   listener.reuse_address(true).unwrap();
-   listener.bind(addr).unwrap();
+    println!("a new worker thread");
+    let listener = match *addr {
+        SocketAddr::V4(_) => net2::TcpBuilder::new_v4().unwrap(),
+        SocketAddr::V6(_) => net2::TcpBuilder::new_v6().unwrap(),
+    };
+    configure_tcp(workers, &listener).unwrap();
+    listener.reuse_address(true).unwrap();
+    listener.bind(addr).unwrap();
 
-   let mut server = listener
-       .listen(1024)
-       .and_then(|l| TcpListener::from_std(l))
-       .unwrap();
+    let mut server = listener
+        .listen(1024)
+        .and_then(|l| TcpListener::from_std(l))
+        .unwrap();
 
     let mut incoming = server.incoming();
 
@@ -125,54 +121,35 @@ async fn worker_func<PRC>(
 			
         println!("message received!");
 
-           //let (mut r_chan, mut w_chan) = socket.split();
-
-           //let _proc = procWrap(Arc::clone(&processor), Box::new(r_chan), Box::new(w_chan), 
-           //let _proc = procWrap(Arc::clone(&processor), &mut r_chan, &mut w_chan, 
-           
-           /* Begin Annotation */
-           // let proc = procWrap(Arc::clone(&processor),
-			// 	Box::new(socket),
-			// 	//&mut socket,
-			// 	Arc::clone(&rtf), Arc::clone(&wtf), 
-           //     Arc::clone(&ipf), Arc::clone(&opf));
-
-           // tokio::spawn(proc);
-           /* End Annotation */
-
-			//tokio::spawn(async move || {
-			//	_proc().await
-			//});
-           // tokio::spawn(async move ||_proc);
-           {
-                let processor = Arc::clone(&processor);
-                tokio::spawn(async move {
-                    let (r_chan, w_chan) = socket.into_split();
+        {
+            let processor = Arc::clone(&processor);
+            tokio::spawn(async move {
+                let (r_chan, w_chan) = socket.into_split();
                    
-                    let r_tran = TAsyncBufferedReadTransport::new(r_chan);
-                    let w_tran = TAsyncBufferedWriteTransport::new(w_chan);
-                    let mut i_prot = TAsyncBinaryInputProtocol::new(r_tran, false);
-                    let mut o_prot = TAsyncBinaryOutputProtocol::new(w_tran, false);
-                   //let i_prot_arc = Arc::new(i_prot);
-                   //let o_prot_arc = Arc::new(o_prot);
-                    loop {
-                        match processor.
-                            process(&mut i_prot, 
-                            &mut o_prot).await {
-                            Ok(_ok) => { println!("[gbd] async_server arrive here 1"); },
-                            Err(_e) => {
-                                match _e {
-                                   crate::Error::Transport(ref transport_err)
-                                   if transport_err.kind == TransportErrorKind::EndOfFile => {
-                                       /*println!("end of file")*/
-                                    }
-                                    other => println!("processor completed with error: {:?}", other)
-                               };
-                           },
-                       };
-                   }
-               });
-           }
+                let r_tran = TAsyncBufferedReadTransport::new(r_chan);
+                let w_tran = TAsyncBufferedWriteTransport::new(w_chan);
+                let mut i_prot = TAsyncBinaryInputProtocol::new(r_tran, false);
+                let mut o_prot = TAsyncBinaryOutputProtocol::new(w_tran, false);
+
+                loop {
+                    match processor.
+                        process(&mut i_prot, 
+                        &mut o_prot).await {
+                        Ok(_ok) => { println!("[gbd] async_server arrive here 1"); },
+                        Err(_e) => {
+                            match _e {
+                                crate::Error::Transport(ref transport_err)
+                                if transport_err.kind == TransportErrorKind::EndOfFile => {
+                                    /*println!("end of file")*/
+                                },
+                                other => println!("processor completed with error: {:?}", other),
+                            };
+                            break;
+                        },
+                    };
+                }
+            });
+        }
 	}
 }
 
