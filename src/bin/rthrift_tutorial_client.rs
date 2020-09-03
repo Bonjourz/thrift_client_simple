@@ -42,7 +42,6 @@ use std::fs::File;
 use std::io::prelude::*;
 
 extern crate core_affinity;
-use std::thread;
 
 const SERVER_ADDR : &'static str = "10.108.21.58";
 const PORT : u16 = 11235;
@@ -118,7 +117,7 @@ fn run_throughput_test(addr: Arc<String>, port: u16, loop_num: u64, thread_num: 
     let thp_array : Arc<Mutex<Vec<u64>>> = Arc::new(Mutex::new(Vec::new()));
 	
 	//let core_ids = core_affinity::get_core_ids().unwrap();
-	let cur_core_id = core_affinity::CoreId::new(thread_num % 32);
+	let cur_core_id = core_affinity::CoreId{ id : thread_num as usize % 32};
 	core_affinity::set_for_current(cur_core_id);
     /* Spawn threads */
     for _i in 0..thread_num {
