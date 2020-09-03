@@ -24,6 +24,6 @@
 
 service SharedService {
   i32 add(1: i32 arg1, 2: i32 arg2)
-  i32 send_packet(1: string str)
+  string send_packet(1: string str)
   void send_empty()
 }

@@ -34,7 +34,7 @@ use thrift::server::TProcessor;
 /// these definitions.
 pub trait TSharedServiceSyncClient {
   fn add(&mut self, arg1: i32, arg2: i32) -> thrift::Result<i32>;
-  fn send_packet(&mut self, str: String) -> thrift::Result<i32>;
+  fn send_packet(&mut self, str: String) -> thrift::Result<String>;
   fn send_empty(&mut self) -> thrift::Result<()>;
 }
 
@@ -89,7 +89,7 @@ impl <C: TThriftClient + TSharedServiceSyncClientMarker> TSharedServiceSyncClien
       result.ok_or()
     }
   }
-  fn send_packet(&mut self, str: String) -> thrift::Result<i32> {
+  fn send_packet(&mut self, str: String) -> thrift::Result<String> {
     (
       {
         self.increment_sequence_number();
@@ -153,7 +153,7 @@ impl <C: TThriftClient + TSharedServiceSyncClientMarker> TSharedServiceSyncClien
 /// these definitions.
 pub trait SharedServiceSyncHandler {
   fn handle_add(&self, arg1: i32, arg2: i32) -> thrift::Result<i32>;
-  fn handle_send_packet(&self, str: String) -> thrift::Result<i32>;
+  fn handle_send_packet(&self, str: String) -> thrift::Result<String>;
   fn handle_send_empty(&self) -> thrift::Result<()>;
 }
 
@@ -501,13 +501,13 @@ impl SharedServiceSendPacketArgs {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct SharedServiceSendPacketResult {
-  result_value: Option<i32>,
+  result_value: Option<String>,
 }
 
 impl SharedServiceSendPacketResult {
   fn read_from_in_protocol(i_prot: &mut dyn TInputProtocol) -> thrift::Result<SharedServiceSendPacketResult> {
     i_prot.read_struct_begin()?;
-    let mut f_0: Option<i32> = None;
+    let mut f_0: Option<String> = None;
     loop {
       let field_ident = i_prot.read_field_begin()?;
       if field_ident.field_type == TType::Stop {
@@ -516,7 +516,7 @@ impl SharedServiceSendPacketResult {
       let field_id = field_id(&field_ident)?;
       match field_id {
         0 => {
-          let val = i_prot.read_i32()?;
+          let val = i_prot.read_string()?;
           f_0 = Some(val);
         },
         _ => {
@@ -534,9 +534,9 @@ impl SharedServiceSendPacketResult {
   fn write_to_out_protocol(&self, o_prot: &mut dyn TOutputProtocol) -> thrift::Result<()> {
     let struct_ident = TStructIdentifier::new("SharedServiceSendPacketResult");
     o_prot.write_struct_begin(&struct_ident)?;
-    if let Some(fld_var) = self.result_value {
-      o_prot.write_field_begin(&TFieldIdentifier::new("result_value", TType::I32, 0))?;
-      o_prot.write_i32(fld_var)?;
+    if let Some(ref fld_var) = self.result_value {
+      o_prot.write_field_begin(&TFieldIdentifier::new("result_value", TType::String, 0))?;
+      o_prot.write_string(fld_var)?;
       o_prot.write_field_end()?;
       ()
     } else {
@@ -545,7 +545,7 @@ impl SharedServiceSendPacketResult {
     o_prot.write_field_stop()?;
     o_prot.write_struct_end()
   }
-  fn ok_or(self) -> thrift::Result<i32> {
+  fn ok_or(self) -> thrift::Result<String> {
     if self.result_value.is_some() {
       Ok(self.result_value.unwrap())
     } else {
