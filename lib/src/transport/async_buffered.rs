@@ -30,10 +30,10 @@ use std::cmp;
 use futures::ready;
 
 //const READ_CAPACITY: usize = 4096;
-const READ_CAPACITY: usize = 10;
+const READ_CAPACITY: usize = 4096;
 use std::slice;
 //const WRITE_CAPACITY: usize = 4096;
-const WRITE_CAPACITY: usize = 10;
+const WRITE_CAPACITY: usize = 4096;
 
 
 pin_project! {
