@@ -50,6 +50,9 @@ use rthrift_tutorial::shared::{TSharedServiceSyncClient, SharedServiceSyncClient
 
 use pprof;
 
+#[macro_use(lazy_static)]
+extern crate lazy_static;
+
 fn get_duration(start_time : Instant, end_time: Instant) -> Duration {
     end_time.duration_since(start_time)
 }
@@ -126,7 +129,8 @@ async fn test_qps(ring_prod_arc: Arc<Mutex<Producer<SharedServiceSyncClient<Clie
     Ok(())
 }
 
-async fn run_all_async_qps(thread_num: u64, target_num: u64, conn_num: u64) -> thrift::Result<()> {
+
+async fn run_all_async_qps(thread_num: u64, target_num: u64, conn_num: u64, buf_size : u64) -> thrift::Result<()> {
     //let (mut sender, mut receiver) = mpsc::channel<SharedServiceSyncClient<ClientInputProtocol, ClientOutputProtocol>>(conn_num as usize);
     let rb = RingBuffer::<SharedServiceSyncClient<ClientInputProtocol, ClientOutputProtocol>>::new(conn_num as usize);
     let (mut prod, cons) = rb.split();
@@ -143,6 +147,7 @@ async fn run_all_async_qps(thread_num: u64, target_num: u64, conn_num: u64) -> t
     let ring_cons_arc = Arc::new(Mutex::new(cons));
     let time_begin = Instant::now();
     println!("thread num: {}", thread_num);
+
     for _i in 0..thread_num {
         let initial_total = initial_total.clone();
         let ring_prod_arc = ring_prod_arc.clone();
@@ -393,7 +398,7 @@ fn main() {
     match option {
         /* Run qps test */
         0 => {
-            match rt.block_on(run_all_async_qps(thread_num, req_num, conn_num)) {
+            match rt.block_on(run_all_async_qps(thread_num, req_num, conn_num, buf_size)) {
                 Ok(_ok) => {},
                 Err(_err) => { println!("run_qps_test err: {:?}", _err); },
             };
