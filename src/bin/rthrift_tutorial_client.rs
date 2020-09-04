@@ -152,7 +152,10 @@ async fn run_all_async_qps(thread_num: u64, target_num: u64, conn_num: u64) -> t
         let ring_cons_arc = ring_cons_arc.clone();
 
         let handle = tokio::spawn(async move {
-            test_qps(ring_prod_arc, ring_cons_arc, initial_total, &target_num, _i).await;
+            match test_qps(ring_prod_arc, ring_cons_arc, initial_total, &target_num, _i).await {
+                Ok(_) => {},
+                Err(_) => { println!("[gbd] error"); },
+            };
         });
 
 
@@ -388,7 +391,7 @@ fn main() {
     let buf_size = buf_size_in_kb * 1024;
 
     let mut rt = Runtime::new().unwrap();
-    let guard = pprof::ProfilerGuard::new(100).unwrap();
+    //let guard = pprof::ProfilerGuard::new(100).unwrap();
 
     match option {
         /* Run qps test */
@@ -423,15 +426,15 @@ fn main() {
 
     println!("arrive here after rt enter");
 
-    match guard.report().build() {
-        Ok(report) => {
-            let file = File::create("flamegraph.svg").unwrap();
-            report.flamegraph(file).unwrap();
+    // match guard.report().build() {
+    //     Ok(report) => {
+    //         let file = File::create("flamegraph.svg").unwrap();
+    //         report.flamegraph(file).unwrap();
 
-            //println!("report: {}", &report);
-        }
-        Err(_) => {}
-    };
+    //         //println!("report: {}", &report);
+    //     }
+    //     Err(_) => {}
+    // };
 
     /* Barrier here */
 
