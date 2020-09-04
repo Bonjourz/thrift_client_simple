@@ -105,7 +105,7 @@ struct SharedServiceServer {}
 impl SharedServiceSyncHandler for SharedServiceServer {
     async fn handle_add(&self, num1: i32, num2: i32) -> thrift::Result<i32> {
         //println!("handling add: n1:{} n2:{}", num1, num2);
-        println!("receive num1: {} num2: {}", num1, num2);
+        //println!("receive num1: {} num2: {}", num1, num2);
         Ok(num1 + num2)
     }
     async fn handle_send_packet(&self, _str: String) -> thrift::Result<String> {

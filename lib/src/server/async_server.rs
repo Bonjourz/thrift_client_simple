@@ -30,6 +30,7 @@ where
     PRC: TAsyncProcessor + Send + Sync + 'static,
 {
     processor: Arc<PRC>,
+    /* Unused workers number here */
     workers: usize,
     addr: SocketAddr,
 }

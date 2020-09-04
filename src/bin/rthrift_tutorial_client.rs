@@ -53,6 +53,9 @@ use thrift::transport::{
 
 use rthrift_tutorial::shared::{TSharedServiceSyncClient, SharedServiceSyncClient};
 
+use pprof;
+use std::fs::File;
+
 // fn main() {
 //     match run() {
 //         Ok(()) => println!("tutorial client ran successfully"),
@@ -170,7 +173,8 @@ async fn test_qps(ring_prod_arc: Arc<Mutex<Producer<SharedServiceSyncClient<Clie
             }; 
         }
 
-        my_client.send_empty().await?;
+        let result = my_client.add(1, 2).await?;
+        assert_eq!(result, 3);
        // println!("client arrive here 1, thread_idx: {}", t_idx);
         ring_prod_arc.lock().unwrap().push(my_client);
         //println!("client arrive here 2");
@@ -247,11 +251,11 @@ fn main() {
     let matches = options.get_matches();
 
     let loop_num = value_t!(matches, "iter", u64).unwrap_or(5000);
-    let thread_num = value_t!(matches, "thread", u64).unwrap_or(12);
+    let thread_num = value_t!(matches, "thread", u64).unwrap_or(1000);
     let req_num = value_t!(matches, "reqnum", u64).unwrap_or(50000);
     let buf_size_in_kb = value_t!(matches, "bufsize", u64).unwrap_or(1);
     let option = value_t!(matches, "option", u64).unwrap_or(0);
-    let conn_num = value_t!(matches, "conn", u64).unwrap_or(10);
+    let conn_num = value_t!(matches, "conn", u64).unwrap_or(1000);
 
     println!("Client configuration: IP: {}, thread_num: {} req_num {} buf_size per req {} kB option: {}",
                 SERVER_TARGET, thread_num, req_num, buf_size_in_kb,
@@ -260,6 +264,8 @@ fn main() {
     let buf_size = buf_size_in_kb * 1024;
 
     let mut rt = Runtime::new().unwrap();
+    // let guard = pprof::ProfilerGuard::new(100).unwrap();
+
     match option {
         /* Run qps test */
         0 => {
@@ -292,18 +298,17 @@ fn main() {
     // get any passed-in args or the defaults
     // tokio::runtim::Runtime
 
-    //let s = "Hello World!".to_string();
-
-    // rt.block_on(run_all_sync());
-    // match rt.block_on(run_all_sync()) {
-    //     (_x, _y) => {
-    //         match _x {
-    //             Some(_val1) =>  println!("get the val: {}", _val1),
-    //             _ => println!("None val")
-    //         }
-    //     }
-    // }
     println!("arrive here after rt enter");
+
+    // match guard.report().build() {
+    //     Ok(report) => {
+    //         let file = File::create("flamegraph.svg").unwrap();
+    //         report.flamegraph(file).unwrap();
+
+    //         println!("report: {}", &report);
+    //     }
+    //     Err(_) => {}
+    // };
 
     /* Barrier here */
 

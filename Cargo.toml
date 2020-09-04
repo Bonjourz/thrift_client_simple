@@ -47,3 +47,4 @@ tokio = { version = "0.2.22", features = ["full"] }
 winapi = "0.3.9"
 async-trait = "0.1.38"
 ringbuf = "0.2.2"
+pprof = { version = "0.3.18", features = ["flamegraph"]}
