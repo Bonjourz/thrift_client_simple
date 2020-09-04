@@ -40,13 +40,10 @@ use std::io::prelude::*;
 use std::time::{Instant, Duration};
 
 use thrift::protocol::{TAsyncBinaryInputProtocol, TAsyncBinaryOutputProtocol};
-use thrift::transport::{TFramedReadTransport, TFramedWriteTransport, 
-    TBufferedReadTransport, TBufferedWriteTransport, TIoChannel,
-                        TTcpChannel};
 
 use thrift::transport::{
-    TAsyncBufferedReadTransport, TAsyncBufferedReadTransportFactory,
-    TAsyncBufferedWriteTransport, TAsyncBufferedWriteTransportFactory,
+    TAsyncBufferedReadTransport,
+    TAsyncBufferedWriteTransport
 };
 
 use rthrift_tutorial::shared::{TSharedServiceSyncClient, SharedServiceSyncClient};
